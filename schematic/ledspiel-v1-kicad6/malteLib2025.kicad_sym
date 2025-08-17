@@ -6,7 +6,7 @@
     (property "Value" "LM4861" (id 1) (at 5.08 11.43 0)
       (effects (font (size 1.27 1.27)))
     )
-    (property "Footprint" "Package_SO:SOIC-8-N7_3.9x4.9mm_P1.27mm" (id 2) (at 1.27 -3.81 0)
+    (property "Footprint" "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm" (id 2) (at 1.27 -3.81 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "https://www.ti.com/lit/ds/symlink/lm4861.pdf" (id 3) (at 1.27 -3.81 0)
