@@ -9838,8 +9838,8 @@
     (in_bom yes) (on_board yes)
     (uuid e0c14c68-c8e9-4954-a81c-4aedadcae85f)
     (property "Reference" "D84" (id 0) (at 96.52 124.46 0))
-    (property "Value" "SK14" (id 1) (at 101.6 124.46 0))
-    (property "Footprint" "Diode_SMD:D_SMB_Handsoldering" (id 2) (at 99.06 124.46 0)
+    (property "Value" "BAS32L" (id 1) (at 101.6 124.46 0))
+    (property "Footprint" "Diode_SMD:D_MiniMELF" (id 2) (at 99.06 124.46 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "~" (id 3) (at 99.06 124.46 0)
@@ -10733,7 +10733,7 @@
       (reference "D83") (unit 1) (value "LED") (footprint "LED_SMD:LED_0805_2012Metric_Pad1.15x1.40mm_HandSolder")
     )
     (path "/e0c14c68-c8e9-4954-a81c-4aedadcae85f"
-      (reference "D84") (unit 1) (value "SK14") (footprint "Diode_SMD:D_SMB_Handsoldering")
+      (reference "D84") (unit 1) (value "BAS32L") (footprint "Diode_SMD:D_MiniMELF")
     )
     (path "/25e01a16-9182-4944-8ae2-da9c182279f9"
       (reference "D85") (unit 1) (value "LED") (footprint "LED_SMD:LED_0805_2012Metric_Pad1.15x1.40mm_HandSolder")
