@@ -121,6 +121,7 @@
       "track_widths": [
         0.0,
         0.25,
+        0.5,
         1.0
       ],
       "via_dimensions": [
@@ -412,7 +413,7 @@
     "page_layout_descr_file": ""
   },
   "schematic": {
-    "annotate_start_num": 0,
+    "annotate_start_num": 1000,
     "drawing": {
       "default_line_thickness": 6.0,
       "default_text_size": 50.0,
