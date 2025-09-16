@@ -55,7 +55,17 @@
           "width": 0.0
         }
       ],
-      "drc_exclusions": [],
+      "drc_exclusions": [
+        "silk_over_copper|117730000|151549200|481e5418-98b6-4274-a4ad-f6b451dab558|edcc9dff-1d61-478e-b675-474f4a8a8fad",
+        "silk_over_copper|118466828|137410752|c8568d7f-b485-45ed-951f-550d4eda031d|1744ce25-a6ae-4b3c-9873-4c4b8b7e89a7",
+        "silk_over_copper|118500000|154500000|355b97ff-860a-4cc9-968c-0085a91c7b4a|d33e6fb6-a301-406d-a803-52948d848856",
+        "silk_over_copper|118699297|136468877|c8568d7f-b485-45ed-951f-550d4eda031d|b78627fd-d4ef-42e7-9da7-20f3cdac25cc",
+        "silk_over_copper|119411320|146547857|c8568d7f-b485-45ed-951f-550d4eda031d|cd83b867-c51c-4cfe-b653-0968f6f47e6c",
+        "silk_over_copper|147637180|145092895|c8568d7f-b485-45ed-951f-550d4eda031d|b3995810-8663-41b6-b7b6-a55b59442230",
+        "silk_over_copper|147824918|136552065|c8568d7f-b485-45ed-951f-550d4eda031d|81ca981c-24ac-4b37-a00c-57580bd86192",
+        "silk_over_copper|147854540|136653828|c8568d7f-b485-45ed-951f-550d4eda031d|81ca981c-24ac-4b37-a00c-57580bd86192",
+        "silk_over_copper|148033172|137410752|c8568d7f-b485-45ed-951f-550d4eda031d|81ca981c-24ac-4b37-a00c-57580bd86192"
+      ],
       "meta": {
         "version": 2
       },
@@ -103,7 +113,7 @@
         "allow_blind_buried_vias": false,
         "allow_microvias": false,
         "max_error": 0.005,
-        "min_clearance": 0.25,
+        "min_clearance": 0.15,
         "min_copper_edge_clearance": 0.0,
         "min_hole_clearance": 0.25,
         "min_hole_to_hole": 0.25,
@@ -377,7 +387,74 @@
       },
       {
         "bus_width": 12.0,
-        "clearance": 0.75,
+        "clearance": 0.2,
+        "diff_pair_gap": 0.25,
+        "diff_pair_via_gap": 0.25,
+        "diff_pair_width": 0.2,
+        "line_style": 0,
+        "microvia_diameter": 0.3,
+        "microvia_drill": 0.1,
+        "name": "HighDensity",
+        "nets": [
+          "/B10R",
+          "/B11R",
+          "/B12R",
+          "/B13R",
+          "/B14R",
+          "/G10R",
+          "/G11R",
+          "/G12R",
+          "/G13R",
+          "/G14R",
+          "/Line1Pwr",
+          "/Line2Pwr",
+          "/Line3Pwr",
+          "/Line4Pwr",
+          "/Line5Pwr",
+          "/R10R",
+          "/R11R",
+          "/R12R",
+          "/R13R",
+          "/R14R",
+          "unconnected-(J70-Pad8)"
+        ],
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "schematic_color": "rgba(0, 0, 0, 0.000)",
+        "track_width": 0.25,
+        "via_diameter": 0.8,
+        "via_drill": 0.4,
+        "wire_width": 6.0
+      },
+      {
+        "bus_width": 12.0,
+        "clearance": 0.15,
+        "diff_pair_gap": 0.25,
+        "diff_pair_via_gap": 0.25,
+        "diff_pair_width": 0.2,
+        "line_style": 0,
+        "microvia_diameter": 0.3,
+        "microvia_drill": 0.1,
+        "name": "HighestDensity",
+        "nets": [
+          "/Vbus",
+          "GND",
+          "Net-(J5-PadA5)",
+          "Net-(J5-PadA6)",
+          "Net-(J5-PadA7)",
+          "Net-(J5-PadB5)",
+          "unconnected-(J5-PadA8)",
+          "unconnected-(J5-PadB8)"
+        ],
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "schematic_color": "rgba(0, 0, 0, 0.000)",
+        "track_width": 0.25,
+        "via_diameter": 0.8,
+        "via_drill": 0.4,
+        "wire_width": 6.0
+      },
+      {
+        "bus_width": 12.0,
+        "clearance": 0.8,
         "diff_pair_gap": 0.25,
         "diff_pair_via_gap": 0.25,
         "diff_pair_width": 0.2,
@@ -456,5 +533,7 @@
       ""
     ]
   ],
-  "text_variables": {}
+  "text_variables": {
+    "PERSON": "Abcdef"
+  }
 }
