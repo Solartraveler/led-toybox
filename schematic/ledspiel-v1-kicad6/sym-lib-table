@@ -1,0 +1,3 @@
+(sym_lib_table
+  (lib (name "malteLib2025")(type "KiCad")(uri "${KIPRJMOD}/malteLib2025.kicad_sym")(options "")(descr ""))
+)
