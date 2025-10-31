@@ -1,0 +1,24 @@
+Based on commit 3cc726cd5dc6b (tag: SendToPcBManufacturer) the following bugs are in the schematic and PCB layout (revision 1.0):
+
+1. Pins for RGB LEDs are wrong
+  The wrong footprint results in the green and blue LED pins to be switched.
+  Workaround: Switch pins in software, switch resistor values for this colors. No PCB changes required.
+  Schematic and PCB adjusted in revision 1.1
+
+2. PowerOff signal is connected to JTAG JTDI pin and has an internal pull-up
+  Beside no documentation has been found describing this behaviour, a high value can be measured on
+  powerup for some microseconds. This would switch off the power supply immediately.
+  Workaround: Decrease R8 to a value where the internal STM32 pull-up and R8 does not generate a voltage large enough
+  for Q80 to open. 4.7kΩ will do. No PCB changes required.
+  Schematic and PCB adjusted in revision 1.1
+
+3. RV100 and J3 should be soldered from the bottom
+  This allows to save height space in the case.
+  Soldering from the bottom does not need any layout changes, however then the silk screen will be on the wrong side.
+  No schematic and PCB adjustments are planned, as this not really an error.
+
+4. RTC might have a wrong frequency due to an errata of the STM32F405
+  According to the errata, the LSI might be wrong when PC13 toggles. PC13 is used to control the charger.
+  No change planned - this pin is not toggled often and the RTC is optional and currently no usage is planned.
+
+
