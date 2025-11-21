@@ -1,5 +1,11 @@
 # Shared files for the ARM processor #
 
+## algorithm ##
+
+Useful platform independend algorithm by the author of this project.
+
+License: BSD 3-Clause
+
 ## CMSIS ##
 CMSIS header files from ARM and ST
 
