@@ -1,0 +1,28 @@
+name: C/C++ CI
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Install Dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y gcc-arm-none-eabi make freeglut3-dev libpulse-dev libsox-fmt-mp3 jq
+    - name: make Apps
+      run: make -C src/apps
+#Artifact upload always breaks the CI by becoming deprecated, refusing to repeat pipelines
+#Should this happen once more, I will simply remove artifacts at all.
+    - name: Artifacts upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: Build artifacts
+        path: |
+          src/apps/*/build/*/*.bin
+          src/apps/*/build/*/*.elf
+          src/apps/*/build/*/*.tar
+          src/apps/*/pc-simulator/pcSimulate
