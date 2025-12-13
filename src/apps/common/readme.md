@@ -24,6 +24,15 @@ Json parser from (https://github.com/zserge/jsmn) version 1.1.0
 
 License: MIT
 
+# ledspiellib
+
+Files from the author of this project
+
+Files are simply copied from [UniversalboxARM](https://github.com/Solartraveler/UniversalboxArm/tree/a2017e5d17217898de555d77526e7ae967745359/src/apps/common/boxlib) commit #a2017e5d17217898de555d77526e7ae967745359.
+And where needed adapted to the STM32F405 and LedSpiel PCB pin connections.
+
+License: BSD 3-Clause
+
 # lwip
 Just for md5sum calculation.
 

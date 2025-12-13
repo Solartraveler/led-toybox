@@ -1,0 +1,5 @@
+Shared sources:
+
+timer32Bit:    TIM2
+timer16Bit:    TIM10
+rs232debug:    USART1, USART1_IRQHandler
