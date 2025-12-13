@@ -17,6 +17,11 @@ and
 
 STM32Cube_FW_F4_V1.25.2
 
+# jsmn
+Json parser from (https://github.com/zserge/jsmn) version 1.1.0
+
+License: MIT
+
 ## shared-init
 Files from ST. Linker scripts and init assembly routines.
 
