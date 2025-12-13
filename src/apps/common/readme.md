@@ -22,6 +22,13 @@ Json parser from (https://github.com/zserge/jsmn) version 1.1.0
 
 License: MIT
 
+# lwip
+Just for md5sum calculation.
+
+Files taken from [LwIP](https://savannah.nongnu.org/projects/lwip/) version 2.1.3.
+
+License: BSD 3-Clause
+
 ## shared-init
 Files from ST. Linker scripts and init assembly routines.
 
@@ -33,16 +40,3 @@ Files from ST.
 License: BSD 3-Clause
 
 Taken from STM32Cube_FW_F4_V1.28.3
-
-
-
-
-
-
-
-
-
-
-
-
-
