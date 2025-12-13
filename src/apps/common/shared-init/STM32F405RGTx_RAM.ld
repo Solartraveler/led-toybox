@@ -58,6 +58,9 @@ _estack = ORIGIN(RAM) + LENGTH(RAM);    /* end of RAM */
 _Min_Heap_Size = 0x0;      /* required amount of heap  */
 _Min_Stack_Size = 4K; /* required amount of stack */
 
+/* Extracted by the makefile for the metadata.json */
+_Code_Start = 0x20000000;
+
 /* Specify the memory areas */
 MEMORY
 {
