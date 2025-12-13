@@ -40,3 +40,11 @@ Files from ST.
 License: BSD 3-Clause
 
 Taken from STM32Cube_FW_F4_V1.28.3
+
+## libusb_stm32 ##
+Usb communication library
+
+License: Apache 2.0
+
+Files taken from
+[Libusb_stm32](https://github.com/dmitrystu/libusb_stm32) commit #396c2c50ad330b522104d0565525a7350e486fb9
