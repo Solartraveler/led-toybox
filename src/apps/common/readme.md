@@ -45,8 +45,15 @@ Most files are from ST. Linker scripts and init assembly routines.
 
 License: Apache 2.0 and BSD 3-Clause
 
-appInterface.h is taken from
-[UniversalboxARM](https://github.com/Solartraveler/UniversalboxArm/blob/a2017e5d17217898de555d77526e7ae967745359/src/apps/common/shared-init/appInterface.h) commit #a2017e5d17217898de555d77526e7ae967745359.
+appInterface.h, stm32f4xx_hal_msp.c, system_stm32f4xx.c, and main.c are taken from
+[UniversalboxARM](https://github.com/Solartraveler/UniversalboxArm/blob/a2017e5d17217898de555d77526e7ae967745359/src/apps/common/shared-init/) commit #a2017e5d17217898de555d77526e7ae967745359.
+
+stm32f405-LedSpielV1/main.h is a modified file taken from
+[UniversalboxARM](https://github.com/Solartraveler/UniversalboxArm/blob/a2017e5d17217898de555d77526e7ae967745359/src/apps/common/shared-init/stm32f411-nucleo/main.h) commit #a2017e5d17217898de555d77526e7ae967745359.
+The modification is mostly CubeMX generated.
+
+stm32f405-LedSpielV1/stm32f4xx_hal_conf.h is taken from
+[UniversalboxARM](https://github.com/Solartraveler/UniversalboxArm/blob/a2017e5d17217898de555d77526e7ae967745359/src/apps/common/shared-init/stm32f411-nucleo/stm32f4xx_hal_conf.h) commit #a2017e5d17217898de555d77526e7ae967745359.
 
 ## stm32f4xx_HAL_Driver ##
 Files from ST.
