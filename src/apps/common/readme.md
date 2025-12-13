@@ -32,9 +32,12 @@ Files taken from [LwIP](https://savannah.nongnu.org/projects/lwip/) version 2.1.
 License: BSD 3-Clause
 
 ## shared-init
-Files from ST. Linker scripts and init assembly routines.
+Most files are from ST. Linker scripts and init assembly routines.
 
 License: Apache 2.0 and BSD 3-Clause
+
+appInterface.h is taken from
+[UniversalboxARM](https://github.com/Solartraveler/UniversalboxArm/blob/a2017e5d17217898de555d77526e7ae967745359/src/apps/common/shared-init/appInterface.h) commit #a2017e5d17217898de555d77526e7ae967745359.
 
 ## stm32f4xx_HAL_Driver ##
 Files from ST.
