@@ -46,5 +46,11 @@ Usb communication library
 
 License: Apache 2.0
 
-Files taken from
+Most files (but one) are taken from
 [Libusb_stm32](https://github.com/dmitrystu/libusb_stm32) commit #396c2c50ad330b522104d0565525a7350e486fb9
+
+The stm32_compat.h file is based on:
+[stm32h](https://github.com/dmitrystu/stm32h/blob/7e854b1938c6ba5b4163b08de7842e406b5c5fcb/stm32.h) commit #7e854b1938c6ba5b4163b08de7842e406b5c5fcb
+
+License: MIT
+
