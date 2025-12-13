@@ -4,6 +4,8 @@
 
 Useful platform independend algorithm by the author of this project.
 
+Files taken from [UniversalboxARM](https://github.com/Solartraveler/UniversalboxArm/tree/a2017e5d17217898de555d77526e7ae967745359/src/common/algorithm) commit #a2017e5d17217898de555d77526e7ae967745359.
+
 License: BSD 3-Clause
 
 ## CMSIS ##
