@@ -17,7 +17,7 @@
 #Name of this application
 NAME     = HelloWorld
 #Version of this application, to be used in the metadata
-VERSION  = 1.0.0
+VERSION  = 1.1.0
 #Author of this application, to be used in the metadata
 AUTHOR   = Malte Marwedel
 #Use the spdx notation here, to be used in the metadata
@@ -44,7 +44,7 @@ TARBINARY = --transform='flags=r;s|$(TARGETRAM)|application|' --directory=$(BUIL
 TARMETA = metadata.json
 
 #Date to be used in the metadata
-DATE=`date +'%F'`
+DATE := `date +'%F'`
 #Md5sum of the application
 MD5SUM=`md5sum $(BUILD_DIR)/$(TARGETRAM).bin | cut -d ' ' -f 1`
 #Start address where the program should be loaded to. Needs to be compatible with the used linking addresses.
@@ -83,6 +83,8 @@ UTILITIES=../../utilities
 STM_HAL=$(COMMON)/$(CHIPFAMILY)_HAL_Driver
 SHARED_INIT=$(COMMON)/shared-init
 CMSIS=$(COMMON)/CMSIS
+LEDSPIELLIB=$(COMMON)/ledspiellib/$(CHIPSUBFAMILY)
+LEDSPIELLIBCORE=$(COMMON)/ledspiellib/cortexm
 ALGORITHM=$(COMMON)/algorithm
 
 ######################################
@@ -166,15 +168,17 @@ C_DEFS =  \
 AS_INCLUDES =
 
 # C includes
-C_INCLUDES = -I$(SHARED_INIT)/$(CHIPSUBFAMILY)-$(BOARD)
+C_INCLUDES = -ICore/Inc
+C_INCLUDES += -I$(SHARED_INIT)/$(CHIPSUBFAMILY)-$(BOARD)
 C_INCLUDES += -I$(SHARED_INIT)/$(CHIPSUBFAMILY)
 C_INCLUDES += -I$(SHARED_INIT)
-C_INCLUDES += -ICore/Inc
+C_INCLUDES += -I$(LEDSPIELLIB)
 C_INCLUDES += -I$(STM_HAL)/Inc
 C_INCLUDES += -I$(STM_HAL)/Inc/Legacy
 C_INCLUDES += -I$(CMSIS)/Device/ST/$(CHIPFAMILY)/Include
 C_INCLUDES += -I$(CMSIS)/Include
 C_INCLUDES += -I$(CMSIS)/Include
+C_INCLUDES += -I$(COMMON)
 C_INCLUDES += -I$(ALGORITHM)
 
 # compile gcc flags
@@ -258,16 +262,6 @@ clean:
 #######################################
 upload:
 	../../utilities/dfu-upload.sh $(BUILD_DIR)/$(TARGET)
-
-uploadExtflash:
-	../../utilities/dfu-upload.sh --store $(BUILD_DIR)/$(TARGET)
-
-uploadNostart:
-	../../utilities/dfu-upload.sh --nostart $(BUILD_DIR)/$(TARGET)
-
-uploadExtflashNostart:
-	../../utilities/dfu-upload.sh --store --nostart $(BUILD_DIR)/$(TARGET)
-
 
 #######################################
 # dependencies

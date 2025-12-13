@@ -781,6 +781,60 @@ void SdCardTest(void) {
 	SdCardOff();
 }
 
+void SwdTest(void) {
+	PrintUart("SWD test. Press any key to exit\r\n");
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+	GPIO_InitStruct.Pin = GPIO_PIN_14 | GPIO_PIN_13;
+	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+	bool ignoreDataToggle = false;
+
+	GPIO_PinState stateOldClk = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_14);
+	GPIO_PinState stateOldData = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_13);
+	PrintfUart("Clk %u, data %u\r\n", (unsigned int)stateOldClk, (unsigned int)stateOldData);
+	while (UartInput() == '\0') {
+		GPIO_PinState stateClk = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_14);
+		GPIO_PinState stateData = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_13);
+		if (stateClk != stateOldClk) {
+			if (stateClk == GPIO_PIN_SET) {
+				PrintUart("Clk 1\r\n");
+			} else {
+				PrintUart("Clk 0\r\n");
+			}
+		}
+		if (ignoreDataToggle) {
+			continue;
+		}
+		if (stateData != stateOldData) {
+			if (stateData == GPIO_PIN_SET) {
+				PrintUart("Data 1\r\n");
+			} else {
+				PrintUart("Data 0\r\n");
+			}
+		}
+		stateOldData = stateData;
+		stateOldClk = stateClk;
+	}
+	PrintUart("Test exit\r\nSet to alternate function SWD? Y/n");
+	char c;
+	while ((c = UartInput()) == '\0');
+	PrintUart("\r\n");
+	if ((c == 'y') || (c == 'Y') || (c == '\r')) {
+		GPIO_InitStruct.Pin = GPIO_PIN_14 | GPIO_PIN_13;
+		GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+		GPIO_InitStruct.Pull = GPIO_NOPULL;
+		GPIO_InitStruct.Alternate = GPIO_AF0_SWJ;
+		GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
+		HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+		PrintUart("\r\nSet. Disabling pin test to keep the setting\r\n");
+		PrintUart("1MHz frequency seems to work well, the default 1.5MHz ... 2.5MHz not\r\n");
+		g_runPinTest = false;
+	}
+}
+
 void CheckUserInput(void) {
 	char input = UartInput();
 	switch (input) {
@@ -794,6 +848,7 @@ void CheckUserInput(void) {
 		case 'r': NVIC_SystemReset(); break;
 		case 's': SdCardTest(); break;
 		case 'u': AnalogTest(); break;
+		case 'w': SwdTest(); break;
 		case '1': LedLineSelect(0); break;
 		case '2': LedLineSelect(1); break;
 		case '3': LedLineSelect(2); break;
@@ -881,6 +936,7 @@ int main(void)
 		PrintUart("r: Reboot\r\n");
 		PrintUart("s: SD card test\r\n");
 		PrintUart("u: Read analog\r\n");
+		PrintUart("w: SWD pin test\r\n");
 		PrintUart("+-: Alter blink delay\r\n");
 		PrintUart("1-5: Switch flashing lines\r\n");
 
