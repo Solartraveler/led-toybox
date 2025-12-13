@@ -32,4 +32,7 @@ Add some RGB LEDs in a box with sound. Fun for kids.
 
 ## Status
 
-The PCB design has been send to a manufacturer.
+![alt text](img/ledspiel-debug.jpg "PCB with debug connection")
+
+
+The PCB is soldered. The case is missing.
