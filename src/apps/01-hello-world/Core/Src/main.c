@@ -29,6 +29,10 @@
 #include <stdio.h>
 
 #include "sdmmcAccess.h"
+#include "ledspiellib/ir.h"
+#include "ledspiellib/mcu.h"
+#include "ledspiellib/simpleadc.h"
+#include "ledspiellib/spiGeneric.h"
 
 
 /* USER CODE END Includes */
@@ -236,70 +240,12 @@ void LedLineSelect(uint8_t line) {
 	GPIOC->BSRR = pattern;
 }
 
-void McuStartOtherProgram(void * startAddress) {
-	volatile uint32_t * pStackTop = (uint32_t *)(startAddress);
-	volatile uint32_t * pProgramStart = (uint32_t *)(startAddress + 0x4);
-	__HAL_FLASH_INSTRUCTION_CACHE_DISABLE();
-	__HAL_FLASH_DATA_CACHE_DISABLE();
-	__HAL_FLASH_PREFETCH_BUFFER_DISABLE();
-	HAL_RCC_DeInit();
-	SysTick->CTRL = 0;
-	SysTick->LOAD = 0;
-	SysTick->VAL = 0;
-	__disable_irq();
-	__DSB();
-	__HAL_SYSCFG_REMAPMEMORY_SYSTEMFLASH();
-	__DSB();
-	__ISB();
-	__HAL_RCC_TIM7_FORCE_RESET();
-	__HAL_RCC_SPI1_FORCE_RESET();
-	__HAL_RCC_SPI2_FORCE_RESET();
-	__HAL_RCC_SPI3_FORCE_RESET();
-	__HAL_RCC_USART1_FORCE_RESET();
-	__HAL_RCC_USART2_FORCE_RESET();
-	__HAL_RCC_USART3_FORCE_RESET();
-	__HAL_RCC_UART4_FORCE_RESET();
-	__HAL_RCC_UART5_FORCE_RESET();
-	__HAL_RCC_USART6_FORCE_RESET();
-	__HAL_RCC_TIM7_RELEASE_RESET();
-	__HAL_RCC_SPI1_RELEASE_RESET();
-	__HAL_RCC_SPI2_RELEASE_RESET();
-	__HAL_RCC_SPI3_RELEASE_RESET();
-	__HAL_RCC_USART1_RELEASE_RESET();
-	__HAL_RCC_USART2_RELEASE_RESET();
-	__HAL_RCC_USART3_RELEASE_RESET();
-	__HAL_RCC_UART4_RELEASE_RESET();
-	__HAL_RCC_UART5_RELEASE_RESET();
-	__HAL_RCC_USART6_RELEASE_RESET();
-	//Is there a generic maximum interrupt number defined somewhere?
-	for (uint32_t i = 0; i <= FPU_IRQn; i++) {
-		NVIC_DisableIRQ(i);
-		NVIC_ClearPendingIRQ(i);
-	}
-	__enable_irq(); //actually, the system seems to start with enabled interrupts
-	/* Writing the stack change as C code is a bad idea, because the compiler
-	   can insert stack changeing code before the function call. And in fact, it
-	   does with some optimization. So
-	       __set_MSP(*pStackTop);
-	       ptrFunction_t * pDfu = (ptrFunction_t *)(*pProgramStart);
-	       pDfu();
-	   would work with -Og optimization, but not with -Os optimization.
-	   Instead we use two commands of assembly, where the compiler can't add code
-	   inbetween.
-*/
-	asm("msr msp, %[newStack]\n bx %[newProg]"
-	     : : [newStack]"r"(*pStackTop), [newProg]"r"(*pProgramStart));
-}
-
-
-typedef void (ptrFunction_t)(void);
-
 //See https://stm32f4-discovery.net/2017/04/tutorial-jump-system-memory-software-stm32/
 void JumpDfu(void) {
 	uint32_t dfuStart = 0x1FFF0000;
 	PrintUart("Directly jump to the DFU bootloader\r\n");
 	//first all peripheral clocks should be disabled
-	McuStartOtherProgram((void *)dfuStart); //usually does not return
+	McuStartOtherProgram((void *)dfuStart, false); //usually does not return
 }
 
 void AudioOutputAnalog(void) {
@@ -428,39 +374,6 @@ void AudioToggle(void) {
 	}
 }
 
-void AdcInit(void) {
-	__HAL_RCC_ADC1_CLK_ENABLE();
- 	//temperature sensor + battery sensor enabled, voltage reference enabled div by 4
-	ADC123_COMMON->CCR = ADC_CCR_VBATE | ADC_CCR_TSVREFE | ADC_CCR_ADCPRE_0;
-	/* Configure all channnels with 84 ADC clock cycles sampling time.
-	*/
-	ADC1->SMPR1 = ADC_SMPR1_SMP18_2 | ADC_SMPR1_SMP17_2 | ADC_SMPR1_SMP16_2 |
-	              ADC_SMPR1_SMP15_2 | ADC_SMPR1_SMP14_2 | ADC_SMPR1_SMP13_2 |
-	              ADC_SMPR1_SMP12_2 | ADC_SMPR1_SMP11_2 | ADC_SMPR1_SMP10_2;
-	ADC1->SMPR2 = ADC_SMPR2_SMP9_2 | ADC_SMPR2_SMP8_2 | ADC_SMPR2_SMP7_2 |
-	              ADC_SMPR2_SMP6_2 | ADC_SMPR2_SMP5_2 | ADC_SMPR2_SMP4_2 |
-	              ADC_SMPR2_SMP3_2 | ADC_SMPR2_SMP2_2 | ADC_SMPR2_SMP1_2 | ADC_SMPR2_SMP0_2;
-}
-
-uint16_t AdcGet(uint32_t channel) {
-	if (channel >= 32) {
-		return 0xFFFF; //impossible value
-	}
-	ADC1->CR2 &= ~ADC_CR2_ADON;
-	ADC1->SR &= ~(ADC_SR_EOC | ADC_SR_STRT | ADC_SR_OVR); //clear end of conversion bit
-	ADC1->SQR3 = channel << ADC_SQR3_SQ1_Pos;
-	ADC1->CR2 |= ADC_CR2_ADON;
-	ADC1->CR2 |= ADC_CR2_SWSTART;
-	while ((ADC1->SR & ADC_SR_EOC) == 0);
-	uint16_t val = ADC1->DR;
-	return val;
-}
-
-void AdcStop(void) {
-	ADC1->CR2 &= ~ADC_CR2_ADON;
-	__HAL_RCC_ADC1_CLK_DISABLE();
-}
-
 void LightSelect(uint8_t mode) {
 	GPIO_InitTypeDef GPIO_InitStruct = {0};
 
@@ -578,27 +491,15 @@ void LightRead(void) {
 }
 
 void InfraredTest(void) {
-	GPIO_InitTypeDef GPIO_InitStruct = {0};
-	GPIO_InitStruct.Pin = RemoteIn_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	HAL_GPIO_Init(RemoteIn_GPIO_Port, &GPIO_InitStruct);
-
-	GPIO_InitStruct.Pin = RemoteOn_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	HAL_GPIO_Init(RemoteOn_GPIO_Port, &GPIO_InitStruct);
-
-	HAL_GPIO_WritePin(RemoteOn_GPIO_Port, RemoteOn_Pin, GPIO_PIN_SET);
+	IrInit();
+	IrOn();
 
 	PrintUart("Press any key to exit IR test\r\n");
-	GPIO_PinState stateOld = HAL_GPIO_ReadPin(RemoteIn_GPIO_Port, RemoteIn_Pin);
+	bool stateOld = !IrPinSignal();
 	while (UartInput() == '\0') {
-		GPIO_PinState pinState = HAL_GPIO_ReadPin(RemoteIn_GPIO_Port, RemoteIn_Pin);
+		bool pinState = !IrPinSignal();
 		if (pinState != stateOld) {
-			if (pinState == GPIO_PIN_SET) {
+			if (pinState == true) {
 				PrintUart("IR 1\r\n");
 			} else {
 				PrintUart("IR 0\r\n");
@@ -607,96 +508,7 @@ void InfraredTest(void) {
 		}
 	}
 	PrintUart("Test exit\r\n");
-	HAL_GPIO_WritePin(RemoteOn_GPIO_Port, RemoteOn_Pin, GPIO_PIN_RESET);
-}
-
-#define SPIQUEUEDEPTH 1
-
-/*Transfers data over SPI by polling. SPI needs to be initialized, the output
-  pins configured and chip select properly set.
-  pSpi: Give the desired SPI: SPI1, SPI2, SPI3 etc. Defined in the stm32******.h
-  dataOut: Data to send. If not NULL, must have the length len.
-  dataIn: Buffer to store the incoming data to. If not NULL, must have the length len.
-  len: Number of bytes to send or receive.
-  If dataOut is NULL, 0xFF will be send.
-  If dataIn is NULL, the incoming data are just discarded.
-  If dataOut and dataIn are NULL, just 0xFF is sent with the lenght len.
-  Returns true if sending did not end in a timeout. Timeout is 100 ticks in most cases.
-  (100 ticks are usually 100ms).
-*/
-static bool SpiGenericPolling(SPI_TypeDef * pSpi, const uint8_t * dataOut, uint8_t * dataIn, size_t len) {
-	/*We can not simply fill data to the input buffer as long as there
-	  is room free. Because if we have still data in the incoming buffer and then
-	  then fill the outgoing buffer and then get a longer interrupt (by a interrupt
-	  or a task scheduler) our input would be filled up by more bytes than the rx
-	  buffer can handle and end with an overflow there.
-	  So we can only fill as much data to the outgoing buffer as there is space in the incoming buffer too.
-	  For the STM32F411, according to the datasheet there the buffers seems to support only one element.
-	  For the STM32L452, the datasheet mentions 32bit of FIFO. This should be 4x 8bit data.
-	  As result, there will be an interruption for the STM32F411 between one byte sent and the next one put
-	  into the TX buffer, whereas the STM32L452 could work without interruption and reach the maximum possible
-	  SPI speed.
-	*/
-	size_t inQueue = 0;
-	const size_t inQueueMax = SPIQUEUEDEPTH; //defined by hardware
-	bool success = true;
-	bool timeout = false;
-	size_t txLen = len;
-	size_t rxLen = len;
-	//printf("Len: %u\r\n", (unsigned int)len);
-	uint32_t timeStart = HAL_GetTick();
-	while ((rxLen) || (pSpi->SR & SPI_SR_BSY)) {
-		//Because a set overflow bit is cleared by each read, so read an check only once in the loop
-		uint32_t sr = pSpi->SR;
-		if ((sr & SPI_SR_TXE) && (inQueue < inQueueMax) && (txLen)) {
-			uint8_t data = 0xFF; //leave signal high if we are only want to receive
-			if (dataOut) {
-				data = *dataOut;
-				dataOut++;
-			}
-			//printf("W\r\n");
-			//Without the cast, 16bit are written, resulting in a second byte with value 0x0 send
-			*(__IO uint8_t *)&(pSpi->DR) = data;
-			inQueue++;
-			txLen--;
-			timeout = false;
-		}
-		if ((sr & SPI_SR_RXNE) && (inQueue) && (rxLen)) {
-			//printf("R");
-			//Without the cast, we might get up to two bytes at once
-			uint8_t data = *(__IO uint8_t *)&(pSpi->DR);
-			if (dataIn) {
-				*dataIn = data;
-				//printf("%x\r\n", data);
-				dataIn++;
-			}
-			inQueue--;
-			rxLen--;
-			timeout = false;
-		}
-		if (sr & SPI_SR_OVR) {
-			//printf("Overflow!\r\n");
-			success = false;
-			break;
-		}
-		if (timeout) {
-			//printf("Timeout!\r\n");
-			success = false;
-			break;
-		}
-		if ((HAL_GetTick() - timeStart) >= 100) {
-			/*If we have a multitasking system, the timeout might be just the cause
-			  of the scheduler running a higher priority task for 100ms. So we need
-			  to check if there is really nothing to do right now. So only if the
-			  next loop still does not produce anything, we assume the reason of the
-			  timeout is a non working SPI.
-			*/
-			//printf("Timeout?\r\n");
-			timeout = true;
-			timeStart = HAL_GetTick();
-		}
-	}
-	return success;
+	IrOff();
 }
 
 void SdCardOn(void) {

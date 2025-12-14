@@ -17,7 +17,7 @@
 #Name of this application
 NAME     = HelloWorld
 #Version of this application, to be used in the metadata
-VERSION  = 1.1.0
+VERSION  = 1.2.0
 #Author of this application, to be used in the metadata
 AUTHOR   = Malte Marwedel
 #Use the spdx notation here, to be used in the metadata
@@ -110,6 +110,10 @@ C_SOURCES += $(STM_HAL)/Src/$(CHIPFAMILY)_hal_uart.c
 C_SOURCES += $(STM_HAL)/Src/$(CHIPFAMILY)_ll_usb.c
 C_SOURCES += $(STM_HAL)/$(CHIPFAMILY)_hal_pwr_ex.c
 C_SOURCES += $(STM_HAL)/$(CHIPFAMILY)_hal_cortex.c
+C_SOURCES += $(LEDSPIELLIB)/ir.c
+C_SOURCES += $(LEDSPIELLIB)/leds.c
+C_SOURCES += $(LEDSPIELLIB)/mcu.c
+C_SOURCES += $(LEDSPIELLIB)/simpleadc.c
 C_SOURCES += $(ALGORITHM)/sdmmcAccess.c
 C_SOURCES += Core/Src/system_$(CHIPFAMILY).c
 
