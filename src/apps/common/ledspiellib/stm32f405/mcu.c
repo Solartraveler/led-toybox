@@ -143,6 +143,12 @@ static uint8_t McuClockToPll(uint32_t frequency, uint32_t apbDivider, uint32_t p
 		RCC_OscInitStruct.PLL.PLLN = 96;
 		RCC_OscInitStruct.PLL.PLLP = 2;
 		RCC_OscInitStruct.PLL.PLLQ = 4;
+	} else if (frequency == 144000000) {
+		latency = FLASH_LATENCY_4;
+		RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+		RCC_OscInitStruct.PLL.PLLN = 144;
+		RCC_OscInitStruct.PLL.PLLP = 2;
+		RCC_OscInitStruct.PLL.PLLQ = 6;
 	} else if (frequency == 168000000) {
 		latency = FLASH_LATENCY_5;
 		RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
@@ -176,7 +182,7 @@ static uint8_t McuClockToPll(uint32_t frequency, uint32_t apbDivider, uint32_t p
 	} else if ((frequency > 42000000) && (apbDivider == RCC_HCLK_DIV1)) {
 		apbDivider = RCC_HCLK_DIV2;
 	}
-	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+	RCC_ClkInitStruct.APB1CLKDivider = apbDivider;
 	//now set new dividers
 	result = HAL_RCC_ClockConfig(&RCC_ClkInitStruct, latency);
 	if (result != HAL_OK) {
@@ -246,3 +252,47 @@ uint8_t McuClockToHsePll(uint32_t frequency, uint32_t apbDivider) {
 
 void McuLockCriticalPins(void) {
 }
+
+uint64_t McuTimestampUs(void) {
+	uint32_t stamp1, stamp2;
+	uint32_t substamp;
+	//get the data
+	do {
+		stamp1 = HAL_GetTick();
+		substamp = SysTick->VAL;
+		stamp2 = HAL_GetTick();
+	} while (stamp1 != stamp2); //don't read VAL while an overflow happened
+	uint32_t load = SysTick->LOAD;
+	//NVIC_GetPendingIRQ(SysTick_IRQn) does not work!
+	if (SCB->ICSR & SCB_ICSR_PENDSTSET_Msk) {
+		/* Looks like the systick interrupts is locked, and 2x HAL_GetTick
+		   just got the same timestamp because the increment could not be done.
+		   So if the substamp is > load/2, it has underflown before the readout and
+		   the stamp value needs to be increased.
+		   Note: The pending alredy gets set when the value switches from 1 -> 0,
+		   but we only want to add 1ms when a 0 -> load underflow happened.
+		   The 1 -> 0 never is a problem with ISRs enabled, because this case is
+		   catched by the stamp1 != stamp2 comparison.
+		   Important: This logic assumes SCB_ICSR_PENDSTSET_Msk could never be set
+		   as pending, when the ISR is not blocked (and this function is not called
+		   from within the systick interrupt itself).
+		*/
+		if (substamp > (load / 2)) {
+			stamp1++;
+		}
+	}
+	//now calculate
+	substamp = load - substamp; //this counts down, so invert it
+	substamp = substamp * 1000 / load;
+	uint64_t stamp = stamp1;
+	stamp *= 1000;
+	stamp += substamp;
+	//printf("Stamp: %x-%x\r\n", (uint32_t)(stamp >> 32LLU), (uint32_t)stamp);
+	return stamp;
+}
+
+void McuDelayUs(uint32_t us) {
+	uint64_t tEnd = McuTimestampUs() + us;
+	while (tEnd > McuTimestampUs());
+}
+
