@@ -524,7 +524,7 @@ void SdCardOn(void) {
 	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	HAL_GPIO_Init(SdOn_GPIO_Port, &GPIO_InitStruct);
+	HAL_GPIO_Init(SdCs_GPIO_Port, &GPIO_InitStruct);
 	HAL_GPIO_WritePin(SdCs_GPIO_Port, SdCs_Pin, GPIO_PIN_SET);
 
 	GPIO_InitStruct.Pin = GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7;
@@ -564,7 +564,7 @@ void SdCardOff(void) {
 	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	HAL_GPIO_Init(SdOn_GPIO_Port, &GPIO_InitStruct);
+	HAL_GPIO_Init(SdCs_GPIO_Port, &GPIO_InitStruct);
 
 	GPIO_InitStruct.Pin = SdOn_Pin;
 	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
