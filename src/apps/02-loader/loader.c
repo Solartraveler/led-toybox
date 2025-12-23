@@ -62,7 +62,7 @@ uint8_t g_deviceDescriptor[] = {
 uint8_t g_DeviceConfiguration[] = {
 	9,     //length of this entry
 	0x2,   //device configuration
-	45, 0, //total length of this struct
+	27, 0, //total length of this struct
 	0x1,   //number of interfaces
 	0x1,   //this config
 	0x0,   //descriptor of this config index, not used
