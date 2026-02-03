@@ -48,7 +48,7 @@ static void FlashChipSelect(bool selected) {
 
 static void SdTransfer(const uint8_t * dataOut, uint8_t * dataIn, size_t len, uint8_t /*chipSelect*/, bool resetChipSelect) {
 	FlashChipSelect(true);
-#if 1
+#if 0
 	//Use polling
 	SpiGenericPolling(SPIPORT, dataOut, dataIn, len);
 #else
