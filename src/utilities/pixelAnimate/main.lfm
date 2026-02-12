@@ -1,0 +1,336 @@
+object Form1: TForm1
+  Left = 334
+  Height = 746
+  Top = 175
+  Width = 895
+  Caption = 'Pixel Animate'
+  ClientHeight = 746
+  ClientWidth = 895
+  DesignTimePPI = 125
+  LCLVersion = '4.0.0.4'
+  OnCreate = FormCreate
+  object GroupBox1: TGroupBox
+    Left = 8
+    Height = 72
+    Top = 8
+    Width = 873
+    Caption = 'Animation'
+    ClientHeight = 48
+    ClientWidth = 869
+    TabOrder = 0
+    object Button1: TButton
+      Left = 16
+      Height = 33
+      Top = 8
+      Width = 98
+      Caption = 'Load'
+      TabOrder = 0
+      OnClick = Button1Click
+    end
+    object Button2: TButton
+      Left = 120
+      Height = 33
+      Top = 8
+      Width = 98
+      Caption = 'Save'
+      TabOrder = 1
+      OnClick = Button2Click
+    end
+    object Button3: TButton
+      Left = 224
+      Height = 33
+      Top = 8
+      Width = 98
+      Caption = 'Export'
+      TabOrder = 2
+      OnClick = Button3Click
+    end
+    object Button4: TButton
+      Left = 328
+      Height = 33
+      Top = 8
+      Width = 98
+      Caption = 'Run'
+      TabOrder = 3
+    end
+    object SpinEdit1: TSpinEdit
+      Left = 464
+      Height = 30
+      Top = 8
+      Width = 65
+      MaxValue = 4095
+      MinValue = 1
+      TabOrder = 4
+      Value = 5
+    end
+    object SpinEdit2: TSpinEdit
+      Left = 568
+      Height = 30
+      Top = 8
+      Width = 65
+      MaxValue = 4095
+      MinValue = 1
+      TabOrder = 5
+      Value = 5
+    end
+    object Label6: TLabel
+      Left = 432
+      Height = 22
+      Top = 14
+      Width = 9
+      Caption = 'X'
+    end
+    object Label7: TLabel
+      Left = 536
+      Height = 22
+      Top = 14
+      Width = 9
+      Caption = 'Y'
+    end
+    object Label8: TLabel
+      Left = 640
+      Height = 22
+      Top = 14
+      Width = 27
+      Caption = 'Bits'
+    end
+    object SpinEdit5: TSpinEdit
+      Left = 680
+      Height = 30
+      Top = 6
+      Width = 65
+      MaxValue = 16
+      MinValue = 1
+      TabOrder = 6
+      Value = 8
+    end
+  end
+  object GroupBox2: TGroupBox
+    Left = 8
+    Height = 648
+    Top = 88
+    Width = 345
+    Anchors = [akTop, akLeft, akBottom]
+    Caption = 'Storybook'
+    ClientHeight = 624
+    ClientWidth = 341
+    TabOrder = 1
+    object ListBox1: TListBox
+      Left = 8
+      Height = 304
+      Top = 312
+      Width = 328
+      Anchors = [akTop, akLeft, akRight, akBottom]
+      ItemHeight = 0
+      TabOrder = 0
+      TopIndex = -1
+      OnSelectionChange = ListBox1SelectionChange
+    end
+    object Button5: TButton
+      Left = 13
+      Height = 33
+      Top = 264
+      Width = 98
+      Caption = 'Up'
+      TabOrder = 1
+      OnClick = Button5Click
+    end
+    object Button6: TButton
+      Left = 120
+      Height = 33
+      Top = 264
+      Width = 98
+      Caption = 'Down'
+      TabOrder = 2
+      OnClick = Button6Click
+    end
+    object Button7: TButton
+      Left = 232
+      Height = 33
+      Top = 264
+      Width = 98
+      Caption = 'Delete'
+      TabOrder = 3
+      OnClick = Button7Click
+    end
+    object Button8: TButton
+      Left = 13
+      Height = 33
+      Top = 8
+      Width = 98
+      Caption = 'New Frame'
+      TabOrder = 4
+      OnClick = Button8Click
+    end
+    object Button9: TButton
+      Left = 120
+      Height = 33
+      Top = 8
+      Width = 98
+      Caption = 'Roll'
+      TabOrder = 5
+      OnClick = Button9Click
+    end
+    object Button10: TButton
+      Left = 232
+      Height = 33
+      Top = 224
+      Width = 98
+      Caption = 'Copy'
+      TabOrder = 6
+      OnClick = Button10Click
+    end
+  end
+  object Image1: TImage
+    Left = 368
+    Height = 326
+    Top = 408
+    Width = 344
+  end
+  object GroupBox3: TGroupBox
+    Left = 360
+    Height = 304
+    Top = 96
+    Width = 521
+    Caption = 'Scene'
+    ClientHeight = 280
+    ClientWidth = 517
+    Enabled = False
+    TabOrder = 2
+    object SpinEdit3: TSpinEdit
+      Left = 136
+      Height = 30
+      Top = 0
+      Width = 65
+      TabOrder = 0
+      OnChange = SpinEdit3Change
+    end
+    object FloatSpinEdit1: TFloatSpinEdit
+      Left = 136
+      Height = 30
+      Top = 40
+      Width = 65
+      TabOrder = 1
+      OnChange = FloatSpinEdit1Change
+    end
+    object FloatSpinEdit2: TFloatSpinEdit
+      Left = 136
+      Height = 30
+      Top = 80
+      Width = 65
+      TabOrder = 2
+      OnChange = FloatSpinEdit2Change
+    end
+    object SpinEdit4: TSpinEdit
+      Left = 136
+      Height = 30
+      Top = 120
+      Width = 65
+      TabOrder = 3
+      OnChange = SpinEdit4Change
+    end
+    object Label1: TLabel
+      Left = 12
+      Height = 22
+      Top = 2
+      Width = 115
+      Caption = 'Frame duration'
+    end
+    object Label2: TLabel
+      Left = 12
+      Height = 22
+      Top = 40
+      Width = 40
+      Caption = 'Roll X'
+    end
+    object Label3: TLabel
+      Left = 12
+      Height = 22
+      Top = 87
+      Width = 40
+      Caption = 'Roll Y'
+    end
+    object Label4: TLabel
+      Left = 12
+      Height = 22
+      Top = 128
+      Width = 60
+      Caption = 'Repeats'
+    end
+    object Memo1: TMemo
+      Left = 224
+      Height = 117
+      Top = 33
+      Width = 283
+      Anchors = [akTop, akLeft, akRight, akBottom]
+      ScrollBars = ssAutoBoth
+      TabOrder = 4
+      WordWrap = False
+      OnChange = Memo1Change
+    end
+    object Label5: TLabel
+      Left = 228
+      Height = 22
+      Top = 6
+      Width = 74
+      Caption = 'Comment'
+    end
+  end
+  object SpinEdit6: TSpinEdit
+    Left = 792
+    Height = 30
+    Top = 424
+    Width = 65
+    TabOrder = 3
+  end
+  object SpinEdit7: TSpinEdit
+    Left = 792
+    Height = 30
+    Top = 464
+    Width = 65
+    TabOrder = 4
+  end
+  object SpinEdit8: TSpinEdit
+    Left = 792
+    Height = 30
+    Top = 504
+    Width = 65
+    TabOrder = 5
+  end
+  object Label9: TLabel
+    Left = 770
+    Height = 22
+    Top = 432
+    Width = 10
+    Caption = 'R'
+  end
+  object Label10: TLabel
+    Left = 769
+    Height = 22
+    Top = 472
+    Width = 11
+    Caption = 'G'
+  end
+  object Label11: TLabel
+    Left = 769
+    Height = 22
+    Top = 508
+    Width = 10
+    Caption = 'B'
+  end
+  object OpenDialog1: TOpenDialog
+    Filter = '*.xml'
+    Left = 800
+    Top = 648
+  end
+  object SaveDialog1: TSaveDialog
+    Filter = '*.xml'
+    Left = 752
+    Top = 648
+  end
+  object SaveDialog2: TSaveDialog
+    Filter = '*.anim'
+    Left = 848
+    Top = 648
+  end
+end
