@@ -62,6 +62,20 @@ bool SdmmcWrite(const uint8_t * buffer, uint32_t block, uint32_t blockNum);
 */
 uint32_t SdmmcCapacity(void);
 
+#define SDMMC_CRC_NONE 0
+#define SDMMC_CRC_WRITE 1
+#define SDMMC_CRC_READWRITE 2
+
+/*Sets if the CRC should be checked.
+  For the mode:
+  SDMMC_CRC_NONE: No CRC check is done (fast reading, fast writing)
+  SDMMC_CRC_WRITE: CRC is send for write commands, but received CRC is not checked (fast reading)
+  SDMMC_CRC_READWRITE: CRC is send for write commands and checked for read commands (default after init)
+  Returns true if the command is a success
+*/
+bool SdmmcCrcMode(uint8_t mode);
+
+
 //============ Commands intended for debugging ===================
 
 
@@ -118,10 +132,10 @@ uint8_t SdmmcCheckAcmd41(bool v2OrLaterCard);
 */
 uint8_t SdmmcCheckCmd58(bool * pIsSdHc);
 
-/*Enables the CRC check of the card.
+/*Enables or disables the CRC check of the card.
   returns 0: ok, otherwise an error
 */
-uint8_t SdmmcCheckCmd59(void);
+uint8_t SdmmcCheckCmd59(bool enabled);
 
 /*If init was successful, this
   returns: true if the card is a SD card (not SDHC, SDXC or MMC)

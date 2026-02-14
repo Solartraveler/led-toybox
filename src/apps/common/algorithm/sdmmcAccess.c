@@ -1,5 +1,5 @@
 /* sdmmcAccess.c
-(c) 2024-2025 by Malte Marwedel
+(c) 2024-2026 by Malte Marwedel
 
 SPDX-License-Identifier: BSD-3-Clause
 
@@ -27,14 +27,35 @@ Successfully tested cards:
 (No tested cards failed to work.)
 
 By default only single block read and write is enabled.
-Multiblock read can be enabled. But it does not increase the speed a lot and
-just needs more program memory.
+Multiblock read can be enabled. But it does only increase the speed if the requested
+reads are more than just one block otherwise speed decreases. Also depending on the CPU
+clock speed, the CRC calculation needs much more time than the transfer. So it is only
+useful with CRC read calculation disabled. And its needs more program memory.
+
+With a STM32F4 at 48MHz CPU frequency and 24MHz SPI frequency the following values were measured
+with the 8GiB Intenso card:
+Reading 8KiB at once, repeating 16 times, so reading 128KiB:
+No CRC,             single block: 1376KiB/s
+Send cmd CRC,       single block: 1319KiB/s
+Send and check CRC, single block: 296KiB/s
+No CRC,             multi block: 2206KiB/s
+Send cmd CRC,       multi block: 2169KiB/s
+Send and check CRC, multi block: 329KiB/s
+Reading 512Byte at once, repeating 256 times, so reading 128KiB:
+No CRC,             multi block: 914KiB/s
+Send cmd CRC,       multi block: 901KiB/s
+Send and check CRC, multi block: 276KiB/s
 
 Multiblock write has not been added.
 
 Changelog:
 2024-07-13: Version 1.0
 2025-08-05: Version 1.1
+2026-02-14: Version 1.2
+  - Minor debug prints fixed
+  - Added option to control CRC checking
+  - Add performance measurement option
+  - Improve performance by using HAL_GetTick instead of HAL_Delay while waiting for data
 */
 
 #include <stdbool.h>
@@ -44,7 +65,7 @@ Changelog:
 
 #include "sdmmcAccess.h"
 
-//should provide HAL_Delay()
+//should provide HAL_Delay(), HAL_GetTick and McuTimestampUs
 #include "main.h"
 #include "utility.h"
 
@@ -54,6 +75,7 @@ typedef struct {
 	bool isInitialized;
 	bool isSd; //if true, its a SD or SDHC card, not MMC card
 	bool isSdhc; //if true, its a SDHC or SDXC card, not SD and not MMC
+	uint8_t crcMode; //0: off, 1: write only, 2: read + write
 	uint32_t capacity; //in units of SDMMC_BLOCKSIZE
 } sdmmcState_t;
 
@@ -63,6 +85,15 @@ static sdmmcState_t g_sdmmcState;
 //#define SDMMC_DEBUG printf
 #define SDMMC_DEBUGERROR printf
 //#define SDMMC_DEBUGHEX PrintHex
+
+//Enable to get performance data, needs some function to get µs timestamps
+//#define SDMMC_DEBUGPERFORMANCE
+
+//Enable to use multiblock read commdand
+//#define SDMMC_MULTIBLOCK_READ
+
+#define SDMMC_TICKUS McuTimestampUs
+#define SDMMC_PERFORMANCEPRINT printf
 
 #ifndef SDMMC_DEBUG
 #define SDMMC_DEBUG(...)
@@ -85,7 +116,7 @@ static sdmmcState_t g_sdmmcState;
 #define SDMMC_INIT_TIMEOUT 1000
 
 //time in [ms] to wait for data
-#define SDMMC_TIMEOUT 1000
+#define SDMMC_TIMEOUT 100000
 
 //1 command byte, 4 parameter bytes, 1 CRC byte
 #define SDMMC_COMMAND_LEN 6
@@ -113,14 +144,16 @@ void SdmmcFillCommand(uint8_t * outBuff, uint8_t * inBuff, size_t buffLen, uint8
 	outBuff[3] = param >> 8;
 	outBuff[4] = param;
 	uint8_t crc = 0;
-	for (uint8_t i = 0; i < 5; i++) {
-		uint8_t d = outBuff[i];
-		for (uint8_t j = 0; j < 8; j++) {
-			crc <<= 1;
-			if ((d ^ crc) & 0x80) {
-				crc ^= 0x09;
+	if (g_sdmmcState.crcMode != SDMMC_CRC_NONE) {
+		for (uint8_t i = 0; i < 5; i++) {
+			uint8_t d = outBuff[i];
+			for (uint8_t j = 0; j < 8; j++) {
+				crc <<= 1;
+				if ((d ^ crc) & 0x80) {
+					crc ^= 0x09;
+				}
+				d <<= 1;
 			}
-			d <<= 1;
 		}
 	}
 	outBuff[5] = (crc << 1) | 1;
@@ -428,11 +461,11 @@ uint8_t SdmmcCheckCmd58(bool * pIsSdHc) {
 }
 
 //returns 0: ok, otherwise an error
-uint8_t SdmmcCheckCmd59(void) {
+uint8_t SdmmcCheckCmd59(bool enabled) {
 	//set block length to be 512byte (for SD cards, SDHC and SDXC always use 512)
 	uint8_t dataOutCmd59[15]; //1 byte CMD index, 4 bytes CMD parameter, 1 byte CRC, up to 8 wait bytes, 1 response byte
 	uint8_t dataInCmd59[15];
-	SdmmcFillCommand(dataOutCmd59, dataInCmd59, sizeof(dataOutCmd59), 59, 1); //1 = CRC enabled
+	SdmmcFillCommand(dataOutCmd59, dataInCmd59, sizeof(dataOutCmd59), 59, enabled ? 1 : 0);
 	g_sdmmcState.pSpi(dataOutCmd59, dataInCmd59, sizeof(dataOutCmd59), g_sdmmcState.chipSelect, true);
 	SDMMC_DEBUG("Response from CMD59 (enable CRC):\r\n");
 	SDMMC_DEBUGHEX(dataInCmd59, sizeof(dataInCmd59));
@@ -500,6 +533,7 @@ uint32_t SdmmcInit(SpiTransferFunc_t * pSpiTransfer, uint8_t chipSelect) {
 	}
 	g_sdmmcState.pSpi = pSpiTransfer;
 	g_sdmmcState.chipSelect = chipSelect;
+	g_sdmmcState.crcMode = SDMMC_CRC_READWRITE;
 	//SD/MMC needs at least 74 clocks with DI and CS to be high to enter native operating mode
 	uint8_t initArray[16]; //128 clocks :P
 	memset(&initArray, 0xFF, sizeof(initArray));
@@ -531,7 +565,7 @@ uint32_t SdmmcInit(SpiTransferFunc_t * pSpiTransfer, uint8_t chipSelect) {
 		return 3;
 	}
 	//CMD59 -> enable CRC checking
-	if (SdmmcCheckCmd59() != 0) {
+	if (SdmmcCheckCmd59(true) != 0) {
 		return 1;
 	}
 	//ACMD41 -> not supported -> MMC
@@ -618,9 +652,18 @@ bool SdmmcReadSingleBlock(uint8_t * buffer, uint32_t block) {
 	SDMMC_DEBUG("Read 0x%x\r\n", (unsigned int)block);
 	uint8_t dataOutCmd17[16]; //1 byte CMD index, 4 bytes CMD parameter, 1 byte CRC, up to 8 wait byte, 1 response bytes, 1 extra byte for have a good buffer size
 	uint8_t dataInCmd17[16];
+#ifdef SDMMC_DEBUGPERFORMANCE
+	uint64_t tStart = SDMMC_TICKUS();
+#endif
 	SdmmcFillCommand(dataOutCmd17, dataInCmd17, sizeof(dataOutCmd17), 17, block);
+#ifdef SDMMC_DEBUGPERFORMANCE
+	uint64_t tCommandFill = SDMMC_TICKUS();
+#endif
 	size_t thisRound = sizeof(dataOutCmd17);
 	g_sdmmcState.pSpi(dataOutCmd17, dataInCmd17, thisRound, g_sdmmcState.chipSelect, false);
+#ifdef SDMMC_DEBUGPERFORMANCE
+	uint64_t tCommandSend = SDMMC_TICKUS();
+#endif
 	SDMMC_DEBUG("Response from CMD17 (read single block):\r\n");
 	SDMMC_DEBUGHEX(dataInCmd17, sizeof(dataInCmd17));
 	size_t idxR1 = SdmmcSDR1ResponseIndex(dataInCmd17, sizeof(dataInCmd17));
@@ -651,53 +694,74 @@ bool SdmmcReadSingleBlock(uint8_t * buffer, uint32_t block) {
 			buffer += dLen;
 		}
 	}
+#ifdef SDMMC_DEBUGPERFORMANCE
+	uint64_t tCommandResponse = SDMMC_TICKUS();
+#endif
 	//2. no start? lets wait for the start
 	if (gotDataStart == false) {
-		for (uint32_t i = 0; i < SDMMC_TIMEOUT; i++) {
-			uint8_t dataOut = 0xFF;
+		uint32_t tStart = HAL_GetTick();
+		uint32_t tPassed;
+		uint32_t i = 0;
+		do {
+			/*By first checking the time and then doing a transfer, we do a last transfer
+			  even after the timout condition is true. This catches the cases where the
+			  timeout is not the result of the card but the result of a multi-threading OS,
+			  where this thread just had not computing time for polling left.
+			*/
+			tPassed = HAL_GetTick() - tStart;
 			uint8_t dataIn = 0;
-			g_sdmmcState.pSpi(&dataOut, &dataIn, sizeof(dataIn), g_sdmmcState.chipSelect, false);
+			g_sdmmcState.pSpi(NULL, &dataIn, sizeof(dataIn), g_sdmmcState.chipSelect, false);
 			SDMMC_DEBUGHEX(&dataIn, sizeof(dataIn));
 			if (SdmmcSeekDataStart(&dataIn, sizeof(dataIn)) == 0) {
 				SDMMC_DEBUG("Data start found after %u reads\r\n", (unsigned int)(i + 1));
 				gotDataStart = true;
 				break;
 			}
-			HAL_Delay(1);
-		}
+			i++;
+		} while (tPassed < SDMMC_TIMEOUT);
 	}
 	if (!gotDataStart) {
 		SDMMC_DEBUGERROR("Error, no data start found\r\n");
 		SdmmcDisableCs();
 		return false;
 	}
+#ifdef SDMMC_DEBUGPERFORMANCE
+	uint64_t tDataStart = SDMMC_TICKUS();
+#endif
 	//Copy rest of the data
-	uint8_t outBuffer[64]; //we could use one huge transfer, but this would need 512 byte on the stack
-	memset(outBuffer, 0xFF, sizeof(outBuffer));
-	while (bytesLeft) {
-		thisRound = MIN(bytesLeft, sizeof(outBuffer));
-		g_sdmmcState.pSpi(outBuffer, buffer, thisRound, g_sdmmcState.chipSelect, false);
-		SDMMC_DEBUGHEX(buffer, thisRound);
-		bytesLeft -= thisRound;
-		buffer += thisRound;
-	}
+	g_sdmmcState.pSpi(NULL, buffer, bytesLeft, g_sdmmcState.chipSelect, false);
+	SDMMC_DEBUGHEX(buffer, thisRound);
 	//Read CRC and disable chip select
 	uint8_t crc[2];
-	g_sdmmcState.pSpi(outBuffer, crc, sizeof(crc), g_sdmmcState.chipSelect, true);
+	g_sdmmcState.pSpi(NULL, crc, sizeof(crc), g_sdmmcState.chipSelect, true);
+#ifdef SDMMC_DEBUGPERFORMANCE
+	uint64_t tDataDone = SDMMC_TICKUS();
+#endif
 	SDMMC_DEBUG("CRC:\r\n");
 	SDMMC_DEBUGHEX(crc, sizeof(crc));
-	uint16_t crcIs = SdmmcDataCrc(bufferStart);
-	uint16_t crcShould = (crc[0] << 8) | crc[1];
-	if (crcIs != crcShould) {
-		SDMMC_DEBUGERROR("Error, CRC mismatch, should %x, is %x at block %x\r\n", (unsigned int)crcShould, (unsigned int)crcIs, (unsigned int)block);
-		SDMMC_DEBUGHEX(bufferStart, SDMMC_BLOCKSIZE);
-		return false;
+	if (g_sdmmcState.crcMode == SDMMC_CRC_READWRITE) {
+		uint16_t crcIs = SdmmcDataCrc(bufferStart);
+		uint16_t crcShould = (crc[0] << 8) | crc[1];
+		if (crcIs != crcShould) {
+			SDMMC_DEBUGERROR("Error, CRC mismatch, should %x, is %x at block %x\r\n", (unsigned int)crcShould, (unsigned int)crcIs, (unsigned int)block);
+			SDMMC_DEBUGHEX(bufferStart, SDMMC_BLOCKSIZE);
+			return false;
+		}
 	}
+#ifdef SDMMC_DEBUGPERFORMANCE
+	uint64_t tCrcDone = SDMMC_TICKUS();
+	SDMMC_PERFORMANCEPRINT("tCmdFill: %u\r\n", (unsigned int)(tCommandFill - tStart));
+	SDMMC_PERFORMANCEPRINT("tCmdSend: %u\r\n", (unsigned int)(tCommandSend - tCommandFill));
+	SDMMC_PERFORMANCEPRINT("tCmdResp: %u\r\n", (unsigned int)(tCommandResponse - tCommandSend));
+	SDMMC_PERFORMANCEPRINT("tDatStar: %u\r\n", (unsigned int)(tDataStart - tCommandResponse));
+	SDMMC_PERFORMANCEPRINT("tDatDone: %u\r\n", (unsigned int)(tDataDone - tDataStart));
+	SDMMC_PERFORMANCEPRINT("tCrcChck: %u\r\n", (unsigned int)(tCrcDone - tDataDone));
+#endif
 	return true;
 }
 
 //Enable to use multi block read command
-#if 0
+#ifdef SDMMC_MULTIBLOCK_READ
 
 static bool SdmmcContainsTerminate(const uint8_t * buffer, size_t len) {
 	for (size_t i = 0; i < len; i++) {
@@ -722,18 +786,23 @@ static bool SdmmcTerminateTransfer(void) {
 	if (index < SDMMC_R1_RESPONSE_RANGE) {
 		size_t searchStart = SDMMC_COMMAND_LEN + index + 1;
 		if ((searchStart == sizeof(dataInCmd12)) || (SdmmcContainsTerminate(dataInCmd12 + searchStart, sizeof(dataInCmd12) - searchStart) == false)) {
-			for (uint32_t i = 0; i < 500; i++) {
-				uint8_t dataOut[8];
-				memset(dataOut, 0xFF, sizeof(dataOut));
+			uint32_t tStart = HAL_GetTick();
+			uint32_t tPassed;
+			do {
+				/*By first checking the time and then doing a transfer, we do a last transfer
+				  even after the timout condition is true. This catches the cases where the
+				  timeout is not the result of the card but the result of a multi-threading OS,
+				  where this thread just had not computing time for polling left.
+				*/
+				tPassed = HAL_GetTick() - tStart;
 				uint8_t dataIn[8] = {0};
-				g_sdmmcState.pSpi(dataOut, dataIn, sizeof(dataIn), g_sdmmcState.chipSelect, false);
+				g_sdmmcState.pSpi(NULL, dataIn, sizeof(dataIn), g_sdmmcState.chipSelect, false);
 				SDMMC_DEBUGHEX(dataIn, sizeof(dataIn));
 				if (SdmmcContainsTerminate(dataIn, sizeof(dataIn))) {
 					success = true;
 					break;
 				}
-				HAL_Delay(1);
-			}
+			} while (tPassed < SDMMC_TIMEOUT);
 		} else {
 			success = true;
 		}
@@ -754,8 +823,11 @@ static bool SdmmcReadBlockComplete(const uint8_t * startBytes, size_t startLen, 
 	size_t bytesLeft = SDMMC_BLOCKSIZE;
 	uint8_t * bufferStart = outBlock;
 	//1. do we already have some data we can search and copy?
+#ifdef SDMMC_DEBUGPERFORMANCE
+	uint64_t tSeekStart = SDMMC_TICKUS();
+#endif
 	bool gotDataStart = false;
-	printf("Seek in\r\n");
+	SDMMC_DEBUG("Seek in\r\n");
 	SDMMC_DEBUGHEX(startBytes, startLen);
 	size_t dStart = SdmmcSeekDataStart(startBytes, startLen);
 	if (dStart < startLen) {
@@ -770,46 +842,65 @@ static bool SdmmcReadBlockComplete(const uint8_t * startBytes, size_t startLen, 
 			outBlock += dLen;
 		}
 	}
+#ifdef SDMMC_DEBUGPERFORMANCE
+	uint64_t tSeekComplete = SDMMC_TICKUS();
+#endif
 	//2. no start? lets wait for the start
 	if (gotDataStart == false) {
-		for (uint32_t i = 0; i < SDMMC_TIMEOUT; i++) {
-			uint8_t dataOut = 0xFF;
+		uint32_t tStart = HAL_GetTick();
+		uint32_t tPassed;
+		uint32_t i = 0;
+		do {
+			/*By first checking the time and then doing a transfer, we do a last transfer
+			  even after the timout condition is true. This catches the cases where the
+			  timeout is not the result of the card but the result of a multi-threading OS,
+			  where this thread just had not computing time for polling left.
+			*/
+			tPassed = HAL_GetTick() - tStart;
 			uint8_t dataIn = 0;
-			g_sdmmcState.pSpi(&dataOut, &dataIn, sizeof(dataIn), g_sdmmcState.chipSelect, false);
+			g_sdmmcState.pSpi(NULL, &dataIn, sizeof(dataIn), g_sdmmcState.chipSelect, false);
 			SDMMC_DEBUGHEX(&dataIn, sizeof(dataIn));
 			if (SdmmcSeekDataStart(&dataIn, sizeof(dataIn)) == 0) {
 				SDMMC_DEBUG("Data start found after %u reads\r\n", (unsigned int)(i + 1));
 				gotDataStart = true;
 				break;
 			}
-			HAL_Delay(1);
-		}
+			i++;
+		} while (tPassed < SDMMC_TIMEOUT);
 	}
 	if (!gotDataStart) {
 		SDMMC_DEBUGERROR("Error, no data start found\r\n");
 		return false;
 	}
+#ifdef SDMMC_DEBUGPERFORMANCE
+	uint64_t tDataStart = SDMMC_TICKUS();
+#endif
 	//Copy rest of the data
-	uint8_t outBuffer[64]; //we could use one huge transfer, but this would need 512 byte on the stack
-	memset(outBuffer, 0xFF, sizeof(outBuffer));
-	while (bytesLeft) {
-		size_t thisRound = MIN(bytesLeft, sizeof(outBuffer));
-		g_sdmmcState.pSpi(outBuffer, outBlock, thisRound, g_sdmmcState.chipSelect, false);
-		SDMMC_DEBUGHEX(outBlock, thisRound);
-		bytesLeft -= thisRound;
-		outBlock += thisRound;
-	}
+	g_sdmmcState.pSpi(NULL, outBlock, bytesLeft, g_sdmmcState.chipSelect, false);
+	SDMMC_DEBUGHEX(outBlock, thisRound);
 	//Read CRC and compare
 	uint8_t crc[2];
-	g_sdmmcState.pSpi(outBuffer, crc, sizeof(crc), g_sdmmcState.chipSelect, false);
+	g_sdmmcState.pSpi(NULL, crc, sizeof(crc), g_sdmmcState.chipSelect, false);
+#ifdef SDMMC_DEBUGPERFORMANCE
+	uint64_t tDataDone = SDMMC_TICKUS();
+#endif
 	SDMMC_DEBUG("CRC:\r\n");
 	SDMMC_DEBUGHEX(crc, sizeof(crc));
-	uint16_t crcIs = SdmmcDataCrc(bufferStart);
-	uint16_t crcShould = (crc[0] << 8) | crc[1];
-	if (crcIs != crcShould) {
-		SDMMC_DEBUGERROR("Error, CRC mismatch, should %x, is %x\r\n", (unsigned int)crcShould, (unsigned int)crcIs);
-		return false;
+	if (g_sdmmcState.crcMode == SDMMC_CRC_READWRITE) {
+		uint16_t crcIs = SdmmcDataCrc(bufferStart);
+		uint16_t crcShould = (crc[0] << 8) | crc[1];
+		if (crcIs != crcShould) {
+			SDMMC_DEBUGERROR("Error, CRC mismatch, should %x, is %x\r\n", (unsigned int)crcShould, (unsigned int)crcIs);
+			return false;
+		}
 	}
+#ifdef SDMMC_DEBUGPERFORMANCE
+	uint64_t tCrcDone = SDMMC_TICKUS();
+	SDMMC_PERFORMANCEPRINT("tDatSeek: %u\r\n", (unsigned int)(tSeekComplete - tSeekStart));
+	SDMMC_PERFORMANCEPRINT("tDatStar: %u\r\n", (unsigned int)(tDataStart - tSeekComplete));
+	SDMMC_PERFORMANCEPRINT("tDatDone: %u\r\n", (unsigned int)(tDataDone - tDataStart));
+	SDMMC_PERFORMANCEPRINT("tCrcChck: %u\r\n", (unsigned int)(tCrcDone - tDataDone));
+#endif
 	return true;
 }
 
@@ -901,7 +992,10 @@ bool SdmmcWriteSingleBlock(const uint8_t * buffer, uint32_t block) {
 		SdmmcDisableCs();
 		return false;
 	}
-	uint16_t crc = SdmmcDataCrc(buffer);
+	uint16_t crc = 0;
+	if (g_sdmmcState.crcMode != SDMMC_CRC_NONE) {
+		crc = SdmmcDataCrc(buffer);
+	}
 	uint8_t dataStart[2] = {0xFF, 0xFE};
 	g_sdmmcState.pSpi(dataStart, NULL, sizeof(dataStart), g_sdmmcState.chipSelect, false);
 	g_sdmmcState.pSpi(buffer, NULL, SDMMC_BLOCKSIZE,  g_sdmmcState.chipSelect, false);
@@ -951,6 +1045,22 @@ bool SdmmcWrite(const uint8_t * buffer, uint32_t block, uint32_t blockNum) {
 
 uint32_t SdmmcCapacity(void) {
 	return g_sdmmcState.capacity;
+}
+
+bool SdmmcCrcMode(uint8_t mode) {
+	if (mode == SDMMC_CRC_NONE) {
+		if (SdmmcCheckCmd59(false) == 0) {
+			g_sdmmcState.crcMode = SDMMC_CRC_NONE;
+			return true;
+		}
+	} else if ((mode == SDMMC_CRC_WRITE) || (mode == SDMMC_CRC_READWRITE)) {
+		if (SdmmcCheckCmd59(true) == 0) {
+			g_sdmmcState.crcMode = mode;
+			return true;
+		}
+	}
+	SDMMC_DEBUGERROR("Error, failed to set CRC mode to %u\r\n", mode);
+	return false;
 }
 
 bool SdmmcIsSdCard(void) {
