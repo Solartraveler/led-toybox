@@ -19,6 +19,11 @@ and
 
 STM32Cube_FW_F4_V1.25.2
 
+# fatfs #
+Fat filesystem from (http://elm-chan.org/fsw/ff/00index_e.html) version 0.14b.
+
+License: BSD 1-Clause
+
 # jsmn
 Json parser from (https://github.com/zserge/jsmn) version 1.1.0
 
