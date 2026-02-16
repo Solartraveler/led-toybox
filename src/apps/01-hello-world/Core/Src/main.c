@@ -341,6 +341,7 @@ void AudioPlay(uint16_t frequency) {
 	AudioOutputAnalog();
 	AudioOutputEnable();
 	//Enable DAC
+	__HAL_RCC_DAC_CLK_ENABLE();
 	DAC1->DHR12R1 = 0;
 	DAC1->CR = DAC_CR_EN1;
 	//Enable DMA (Stream 2, Channel 1, triggered by timer 7)
@@ -363,6 +364,9 @@ void AudioPlay(uint16_t frequency) {
 	TIM7->EGR = TIM_EGR_UG;
 	TIM7->CR1 = TIM_CR1_CEN;
 	PrintfUart("%uHz sine test started\r\n", (unsigned int)frequency);
+	for (int i = 0; i < 20; i++) {
+		//PrintfUart("Tim: %u, cnt: %u, 0x%x, DAC: %u\r\n", (unsigned int)TIM7->CNT, (unsigned int)DMA1_Stream2->NDTR, (unsigned int)DMA1_Stream2->M0AR, (unsigned int)(DAC->DHR12R1));
+	}
 }
 
 void AudioToggle(void) {
@@ -734,7 +738,6 @@ int main(void)
 	while (1)
 	{
 		HAL_GPIO_WritePin(Line5_GPIO_Port, Line5_Pin, GPIO_PIN_SET);
-
 		LedLineEqual(LED_R);
 		CheckUserInput();
 		HAL_Delay(g_blinkDelay);
