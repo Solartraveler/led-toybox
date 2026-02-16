@@ -33,6 +33,13 @@ And where needed adapted to the STM32F405 and LedSpiel PCB pin connections.
 
 License: BSD 3-Clause
 
+# libmad
+Libmad - MPEG audio decoder library
+
+License: GPL v2 or newer
+
+Taken from GIT [version 0.16.4 commit ee7c3cdd4361b7f7c7da52fa3ba9f76cc35230a9](https://codeberg.org/tenacityteam/libmad/releases/tag/0.16.4)
+
 # lwip
 Just for md5sum calculation.
 
