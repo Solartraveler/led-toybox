@@ -53,7 +53,7 @@
 ENTRY(Reset_Handler)
 
 /* Highest address of the user mode stack */
-_estack = ORIGIN(RAM) + LENGTH(RAM);    /* end of RAM */
+_estack = ORIGIN(RAM) + LENGTH(RAM); /* end of RAM */
 /* Generate a link error if heap and stack don't fit into RAM */
 _Min_Heap_Size = 0x0;      /* required amount of heap  */
 _Min_Stack_Size = 4K; /* required amount of stack */
@@ -72,7 +72,7 @@ FLASH (rx)     : ORIGIN = 0x8000000, LENGTH = 1024K
 /* Define output sections */
 SECTIONS
 {
-  /* The startup code goes first into FLASH */
+  /* The startup code goes first into RAM */
   .isr_vector :
   {
     . = ALIGN(4);
@@ -81,7 +81,7 @@ SECTIONS
     . = ALIGN(4);
   } >RAM
 
-  /* The program code and other data goes into FLASH */
+  /* The program code and other data goes into RAM */
   .text :
   {
     . = ALIGN(4);
@@ -98,7 +98,7 @@ SECTIONS
     _etext = .;        /* define a global symbols at end of code */
   } >RAM
 
-  /* Constant data goes into FLASH */
+  /* Constant data goes into RAM */
   .rodata :
   {
     . = ALIGN(4);
@@ -107,7 +107,7 @@ SECTIONS
     . = ALIGN(4);
   } >RAM
 
-  .ARM.extab   : { *(.ARM.extab* .gnu.linkonce.armextab.*) } >FLASH
+  .ARM.extab   : { *(.ARM.extab* .gnu.linkonce.armextab.*) } >RAM
   .ARM : {
     __exidx_start = .;
     *(.ARM.exidx*)
@@ -158,7 +158,7 @@ SECTIONS
   * If initialized variables will be placed in this section,
   * the startup code needs to be modified to copy the init-values.
   */
-  .ccmram :
+  .ccmram (NOLOAD):
   {
     . = ALIGN(4);
     _sccmram = .;       /* create a global symbol at ccmram start */
