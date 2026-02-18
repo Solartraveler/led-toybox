@@ -19,6 +19,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "ledspiellib/rs232debug.h"
 #include "ledspiellib/boxusb.h"
 #include "ledspiellib/mcu.h"
+#include "ledspiellib/watchdog.h"
 
 #include "dfuMemory.h"
 
@@ -163,13 +164,8 @@ typedef struct {
 	uint8_t * memStart; //always equivalent to g_DfuMem,
 	size_t memSize; //maximum allowed size, equivalent to g_DfuMemSize
 	size_t tarSize;
-	bool savedToDisk;
 	bool inFile;
 	char filename[TARFILENAME_MAX];
-	uint32_t unixTimestamp;
-	bool watchdogEnforced;
-	bool watchdogEnabled;
-	uint16_t watchdogCounter; //counts up every main loop cycle [10ms], resets the watchdog every 10s
 } loaderState_t;
 
 //Only functions starting with Loader shall use this global variable directly
@@ -549,7 +545,7 @@ bool TarNameGet(uint8_t * tarStart, size_t tarLen, char * nameOut, size_t nameMa
 	return false;
 }
 
-void ProgTarStart(void * tarStart, size_t tarLen, bool watchdogEnforced, bool watchdogEnabled) {
+void ProgTarStart(void * tarStart, size_t tarLen) {
 	uint8_t * fileStart;
 	size_t fileLen;
 	uint8_t * metaStart;
@@ -581,6 +577,10 @@ void ProgTarStart(void * tarStart, size_t tarLen, bool watchdogEnforced, bool wa
 			printf("Starting program with size %u. Md5sum:\r\n", (unsigned int)fileLen);
 			PrintHex(md5sum, sizeof(md5sum));
 			Led1Green();
+			if (watchdogTimeout) {
+				watchdogTimeout = WatchdogStart(watchdogTimeout);
+				printf("Watchdog enabled. Timeout %ums\r\n", (unsigned int)watchdogTimeout);
+			}
 			volatile uint32_t * pProgramStart = (uint32_t *)((uintptr_t)ramStart + 0x4);
 			printf("Program start will be at 0x%x\r\n", (unsigned int)(*pProgramStart));
 			PrepareOtherProgam();
@@ -660,20 +660,12 @@ void LoaderMemUnlock(void) {
 void LoaderProgramStart(void) {
 	LoaderMemLock();
 	if (ProgTarCheck(g_loaderState.memStart, g_loaderState.tarSize)) {
-		ProgTarStart(g_loaderState.memStart, g_loaderState.tarSize,
-		  g_loaderState.watchdogEnforced, g_loaderState.watchdogEnabled); //usually does not return
+		ProgTarStart(g_loaderState.memStart, g_loaderState.tarSize); //usually does not return
 	}
 	__disable_irq();
 	g_dfuState.commStartProgram = false;
 	LoaderMemUnlock();
 	__enable_irq();
-}
-
-void LoaderUpdateTimestamp(void) {
-	uint8_t * startAddr;
-	size_t fileLen;
-	g_loaderState.unixTimestamp = 0;
-	TarFileStartGet("application.bin", g_loaderState.memStart, g_loaderState.tarSize, &startAddr, &fileLen, &(g_loaderState.unixTimestamp));
 }
 
 void AppCycle(void) {
@@ -715,7 +707,6 @@ void AppCycle(void) {
 	__enable_irq();
 	if (transferDone) {
 		g_loaderState.tarSize = g_dfuState.commFileSize;
-		g_loaderState.watchdogEnforced = false;
 		printf("Program with %ubytes transferred\r\n", (unsigned int)g_loaderState.tarSize);
 		if (ProgTarCheck(g_loaderState.memStart, g_loaderState.tarSize)) {
 			g_loaderState.inFile = false;
@@ -726,7 +717,6 @@ void AppCycle(void) {
 				g_loaderState.filename[0] = '\0';
 				printf("Error, could not get program name\r\n");
 			}
-			LoaderUpdateTimestamp();
 			printf("Valid program in RAM. Awaiting action\r\n");
 		}
 		g_dfuState.commTransferDone = false;

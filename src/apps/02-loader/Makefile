@@ -17,7 +17,7 @@
 #Name of this application
 NAME     = LedLoader
 #Version of this application, to be used in the metadata
-VERSION  = 1.0.1
+VERSION  = 1.1.0
 #Author of this application, to be used in the metadata
 AUTHOR   = Malte Marwedel
 #Use the spdx notation here, to be used in the metadata
@@ -114,6 +114,7 @@ C_SOURCES += $(LEDSPIELLIB)/leds.c
 C_SOURCES += $(LEDSPIELLIB)/rs232debug.c
 C_SOURCES += $(LEDSPIELLIB)/boxusb.c
 C_SOURCES += $(LEDSPIELLIB)/mcu.c
+C_SOURCES += $(LEDSPIELLIB)/watchdog.c
 C_SOURCES += $(LEDSPIELLIBCORE)/exceptions.c
 C_SOURCES += $(LEDSPIELLIBCORE)/systickWithFreertos.c
 C_SOURCES += $(USBLIB)/usbd_core.c
