@@ -17,7 +17,7 @@
 #Name of this application
 NAME     = LedSpiel
 #Version of this application, to be used in the metadata
-VERSION  = 0.1.0
+VERSION  = 0.2.0
 #Author of this application, to be used in the metadata
 AUTHOR   = Malte Marwedel
 #Use the spdx notation here, to be used in the metadata
@@ -29,7 +29,7 @@ VARIANT ?= RGTx
 #Hardware, if there are platforms with the same chip, but different layout, some hardware variable might make the difference
 BOARD   ?= LedSpielV1
 #Watchdog in [ms]. 0 disables, maximum is 65535
-WATCHDOG = 0
+WATCHDOG = 20000
 
 #If the name is not readme.md, --transform needs to be used to adjust the name
 TARREADME = readme.md
@@ -89,6 +89,8 @@ USBLIB=$(COMMON)/libusb_stm32
 LWIPLIB=$(COMMON)/lwip
 ALGORITHM=$(COMMON)/algorithm
 JSMN=$(COMMON)/jsmn
+FATFS=$(COMMON)/fatfs
+LIBMAD=$(COMMON)/libmad
 
 ######################################
 # source
@@ -110,24 +112,45 @@ C_SOURCES += $(STM_HAL)/Src/$(CHIPFAMILY)_hal_cortex.c
 C_SOURCES += $(STM_HAL)/Src/$(CHIPFAMILY)_hal_exti.c
 C_SOURCES += $(STM_HAL)/Src/$(CHIPFAMILY)_hal_tim.c
 C_SOURCES += $(STM_HAL)/Src/$(CHIPFAMILY)_hal_tim_ex.c
+C_SOURCES += $(LEDSPIELLIB)/boxusb.c
 C_SOURCES += $(LEDSPIELLIB)/flash.c
 C_SOURCES += $(LEDSPIELLIB)/leds.c
-C_SOURCES += $(LEDSPIELLIB)/rs232debug.c
-C_SOURCES += $(LEDSPIELLIB)/boxusb.c
 C_SOURCES += $(LEDSPIELLIB)/mcu.c
+C_SOURCES += $(LEDSPIELLIB)/rs232debug.c
+C_SOURCES += $(LEDSPIELLIB)/stackSampler.c
+C_SOURCES += $(LEDSPIELLIB)/timer32Bit.c
+C_SOURCES += $(LEDSPIELLIB)/watchdog.c
 C_SOURCES += $(LEDSPIELLIBCORE)/exceptions.c
 C_SOURCES += $(LEDSPIELLIBCORE)/systickWithFreertos.c
 C_SOURCES += $(USBLIB)/usbd_core.c
 C_SOURCES += $(USBLIB)/usbd_stm32f429_otgfs.c
 C_SOURCES += $(LWIPLIB)/md5.c
 C_SOURCES += $(ALGORITHM)/femtoVsnprintf.c
+C_SOURCES += $(ALGORITHM)/filesystem.c
 C_SOURCES += $(ALGORITHM)/json.c
 C_SOURCES += $(ALGORITHM)/libcMinsize.c
 C_SOURCES += $(ALGORITHM)/sdmmcAccess.c
 C_SOURCES += $(ALGORITHM)/tarextract.c
 C_SOURCES += $(ALGORITHM)/utility.c
+C_SOURCES += $(FATFS)/ff.c
+C_SOURCES += $(FATFS)/ffunicode.c
+C_SOURCES += $(FATFS)/diskio.c
+C_SOURCES += $(LIBMAD)/bit.c
+C_SOURCES += $(LIBMAD)/decoder.c
+C_SOURCES += $(LIBMAD)/fixed.c
+C_SOURCES += $(LIBMAD)/frame.c
+C_SOURCES += $(LIBMAD)/huffman.c
+C_SOURCES += $(LIBMAD)/layer12.c
+C_SOURCES += $(LIBMAD)/layer3.c
+C_SOURCES += $(LIBMAD)/stream.c
+C_SOURCES += $(LIBMAD)/synth.c
+C_SOURCES += $(LIBMAD)/timer.c
+C_SOURCES += $(LIBMAD)/version.c
 C_SOURCES += ledspiel.c
+C_SOURCES += mp3Playback.c
 C_SOURCES += usbMsc.c
+C_SOURCES += arm/audioOut.c
+C_SOURCES += arm/keyInput.c
 
 
 # ASM sources
@@ -180,7 +203,13 @@ C_DEFS =  \
 -DAPPVERSION=\"$(VERSION)\" \
 -D$(CHIPDEFINE) \
 -DBOARD_$(BOARDDEFINE) \
--DMAIN_INC_EXTRA=\"mainExtra.h\"
+-DMAIN_INC_EXTRA=\"mainExtra.h\" \
+-DFPM_ARM \
+-Dmalloc=mallocIncept \
+-Dcalloc=callocIncept \
+-Dfree=freeIncept \
+-Dabort=abortIncept \
+-include ledspiel.h
 
 # AS includes
 AS_INCLUDES =
@@ -199,6 +228,9 @@ C_INCLUDES += -I$(USBLIB)
 C_INCLUDES += -I$(LWIPLIB)
 C_INCLUDES += -I$(ALGORITHM)
 C_INCLUDES += -I$(JSMN)
+C_INCLUDES += -I$(FATFS)
+C_INCLUDES += -I$(LIBMAD)
+C_INCLUDES += -Iarm
 C_INCLUDES += -I.
 
 
@@ -252,7 +284,7 @@ $(BUILD_DIR)/%.o: %.c Makefile | $(BUILD_DIR)
 	$(CC) -c $(CFLAGS) -Wa,-a,-ad,-alms=$(BUILD_DIR)/$(notdir $(<:.c=.lst)) $< -o $@
 
 $(BUILD_DIR)/%.o: %.s Makefile | $(BUILD_DIR)
-	$(AS) -c $(CFLAGS) $< -o $@
+	$(AS) -c $(ASFLAGS) $< -o $@
 
 $(BUILD_DIR)/$(TARGETFLASH).elf: $(OBJECTS) Makefile | $(BUILD_DIR)
 	$(CC) $(OBJECTS) $(LDFLAGSFLASH) -o $@
@@ -260,6 +292,22 @@ $(BUILD_DIR)/$(TARGETFLASH).elf: $(OBJECTS) Makefile | $(BUILD_DIR)
 
 $(BUILD_DIR)/$(TARGETRAM).elf: $(OBJECTS) Makefile | $(BUILD_DIR)
 	$(CC) $(OBJECTS) $(LDFLAGSRAM) -o $@
+	#$(SZ) $@
+	#Script done by ChatGPT:
+	@arm-none-eabi-objdump -h $@ | \
+	awk '\
+	{ \
+		size = strtonum("0x"$$3); \
+		addr = strtonum("0x"$$4); \
+		if (addr >= 0x08000000 && addr < 0x09000000) flash += size; \
+		else if (addr >= 0x20000000 && addr < 0x30000000) ram += size; \
+		else if (addr >= 0x10000000 && addr < 0x20000000) ccm += size; \
+	} \
+	END { \
+		printf "FLASH  : %d bytes\n", flash; \
+		printf "RAM    : %d bytes\n", ram; \
+		printf "CCMRAM : %d bytes\n", ccm; \
+	}'
 
 $(BUILD_DIR)/metadata.json: $(BUILD_DIR)/$(TARGETRAM).bin Makefile
 	jq -n --arg date $(DATE) --arg checksum $(MD5SUM) --arg startaddr $(STARTADDR) '{"name":"$(NAME)", "compiled":$$date, "version": "$(VERSION)", "author": "$(AUTHOR)", "license": "$(LICENSE)", "mcu":"$(CHIPSUBFAMILY)", "md5sum":$$checksum, "watchdog":"$(WATCHDOG)", "appaddr":$$startaddr}' > $@

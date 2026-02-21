@@ -1121,6 +1121,7 @@ static usbd_respond usbControl(usbd_device *dev, usbd_ctlreq *req, usbd_rqc_call
 }
 
 void StorageInit(void) {
+	StorageStateReset();
 	g_storageState.flashBytes = FlashSizeGet();
 	/*TODO: Currently writing fails on the STM32F405 due to issues in the USB driver.
 	  It works with the STM32L452 USB driver.

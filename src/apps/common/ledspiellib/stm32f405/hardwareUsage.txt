@@ -4,3 +4,5 @@ timer32Bit:    TIM2
 rs232debug:    USART1, USART1_IRQHandler
 stackSampler:  TIM10
 
+Projects:
+03-ledspiel:   TIM7, DAC1
