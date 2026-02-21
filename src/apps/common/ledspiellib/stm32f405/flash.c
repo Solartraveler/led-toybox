@@ -17,6 +17,8 @@ SPDX-License-Identifier: BSD-3-Clause
 
 #include "main.h"
 
+#include "utility.h"
+
 //These values must fit together and are defined in the datasheet
 #define SPIPORT SPI1
 
@@ -34,6 +36,7 @@ SPDX-License-Identifier: BSD-3-Clause
 #define DMASTREAMRXCOMPLETEFLAG DMA_LISR_TCIF2
 #define DMASTREAMRXCOMPLETEREG (DMA2->LISR)
 
+#define DMA_ENABLED
 
 
 static bool g_flashInitSuccess;
@@ -46,13 +49,17 @@ static void FlashChipSelect(bool selected) {
 	HAL_GPIO_WritePin(SdCs_GPIO_Port, SdCs_Pin, state);
 }
 
-static void SdTransfer(const uint8_t * dataOut, uint8_t * dataIn, size_t len, uint8_t /*chipSelect*/, bool resetChipSelect) {
-	FlashChipSelect(true);
-#if 0
-	//Use polling
-	SpiGenericPolling(SPIPORT, dataOut, dataIn, len);
-#else
-	//Use DMA
+#ifdef DMA_ENABLED
+
+#define DMA_BUFFER_SIZE 128
+
+/*If the buffer given for the SdTransfer is on the stack and if the stack is in the ccm RAM,
+  it can not be used for DMA. Therefore some buffer in the SRAM1 or SRAM2 needs to be used.
+*/
+static uint8_t g_dmaBufferTx[DMA_BUFFER_SIZE];
+static uint8_t g_dmaBufferRx[DMA_BUFFER_SIZE];
+
+static void SdTransferDmaBlock(const uint8_t * dataOut, uint8_t * dataIn, size_t len) {
 	uint8_t transferMode = SpiPlatformTransferBackground(SPIPORT, DMASTREAMTX, DMASTREAMRX,
 	                &DMASTREAMTXCLEARREG, DMASTREAMTXCLEARFLAGS,
 	                &DMASTREAMRXCLEARREG, DMASTREAMRXCLEARFLAGS,dataOut, dataIn, len);
@@ -71,6 +78,29 @@ static void SdTransfer(const uint8_t * dataOut, uint8_t * dataIn, size_t len, ui
 		}
 		SpiPlatformDisableDma(DMASTREAMTX);
 		SpiPlatformWaitDone(SPIPORT);
+	}
+}
+#endif
+
+
+static void SdTransfer(const uint8_t * dataOut, uint8_t * dataIn, size_t len, uint8_t /*chipSelect*/, bool resetChipSelect) {
+	FlashChipSelect(true);
+#ifndef DMA_ENABLED
+	//Use polling
+	SpiGenericPolling(SPIPORT, dataOut, dataIn, len);
+#else
+	//Use DMA
+	size_t transferred = 0;
+	while (transferred < len) {
+		size_t thisTime = MIN(len - transferred, DMA_BUFFER_SIZE);
+		if (dataOut) {
+			memcpy(g_dmaBufferTx, dataOut + transferred, thisTime);
+		}
+		SdTransferDmaBlock(dataOut ? g_dmaBufferTx : NULL, dataIn ? g_dmaBufferRx : NULL, thisTime);
+		if (dataIn) {
+			memcpy(dataIn + transferred, g_dmaBufferRx, thisTime);
+		}
+		transferred += thisTime;
 	}
 #endif
 	if (resetChipSelect) {
