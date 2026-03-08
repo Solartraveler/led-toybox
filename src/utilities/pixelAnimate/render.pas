@@ -1,7 +1,7 @@
 unit render;
 
 {
-  Pixel Animate
+  PixelAnimate
 
   SPDX-FileCopyrightText: 2026 Malte Marwedel
   SPDX-License-Identifier: GPL-2.0-or-later
@@ -13,7 +13,7 @@ unit render;
 interface
 
 uses
-  Classes, SysUtils, laz2_DOM, StrUtils, Dialogs;
+  Classes, SysUtils, DOM, StrUtils;
 
 type
   TBuffer = record
@@ -33,6 +33,9 @@ end;
 
 function renderChar(c, font, offset, sx, sy, lastFrameIdx: integer; fgcolor: TPixel; var animation: TBuffer): integer;
 function render(rn: TDOMNode): TBuffer;
+
+function DomstrToInt(str: DOMString): integer;
+function DomstrToFloat(str: DOMString): double;
 
 procedure addUint8(value: integer; var animation: TBuffer);
 procedure setUint8(index, value: integer; var animation: TBuffer);
@@ -162,6 +165,17 @@ const
 
 
 implementation
+
+
+function DomstrToInt(str: DOMString): integer;
+begin
+  result := StrToInt(String(str));
+end;
+
+function DomstrToFloat(str: DOMString): double;
+begin
+  result := StrToFloat(String(str));
+end;
 
 procedure addUint8(value: integer; var animation: TBuffer);
 begin
@@ -306,14 +320,14 @@ begin
   result := animation.dataUsed;
   ch2 := ch.FirstChild;
   addUint8(dataFrame, animation);
-  addUint16(strtoint(ch.Attributes.GetNamedItem('duration').NodeValue), animation);
+  addUint16(DomstrToInt(ch.Attributes.GetNamedItem('duration').NodeValue), animation);
   pixel.format := format;
   fallback := StringOfChar('0', sx * charsPerColor); //fallback, fill missing data with zeros
   for y := 0 to sy - 1 do begin
     if (assigned(ch2)) then begin
       ch3 := ch2.FirstChild;
       if assigned(ch3) and (ch3.NodeType = TEXT_NODE) then begin
-        data := ch3.NodeValue;
+        data := String(ch3.NodeValue);
       end else
         data := fallback;
     end else
@@ -336,10 +350,10 @@ var
    pixel: TPixel;
 begin
   result := lastFrameIdx; //default if repeats is zero
-  repeats := strtoint(ch.Attributes.GetNamedItem('repeats').NodeValue);
-  duration := strtoint(ch.Attributes.GetNamedItem('duration').NodeValue);
-  rollx := strtofloat(ch.Attributes.GetNamedItem('x').NodeValue);
-  rolly := strtofloat(ch.Attributes.GetNamedItem('y').NodeValue);
+  repeats := DomstrToInt(ch.Attributes.GetNamedItem('repeats').NodeValue);
+  duration := DomstrToInt(ch.Attributes.GetNamedItem('duration').NodeValue);
+  rollx := DomstrToFloat(ch.Attributes.GetNamedItem('x').NodeValue);
+  rolly := DomstrToFloat(ch.Attributes.GetNamedItem('y').NodeValue);
   rollxa := 0;
   rollya := 0;
   for i := 0 to repeats - 1 do begin
@@ -377,13 +391,13 @@ var
    bordercolorstr: string;
 begin
   result := lastFrameIdx; //default if repeats is zero
-  repeats := strtoint(ch.Attributes.GetNamedItem('repeats').NodeValue);
-  duration := strtoint(ch.Attributes.GetNamedItem('duration').NodeValue);
-  rollx := strtofloat(ch.Attributes.GetNamedItem('x').NodeValue);
-  rolly := strtofloat(ch.Attributes.GetNamedItem('y').NodeValue);
+  repeats := DomstrToInt(ch.Attributes.GetNamedItem('repeats').NodeValue);
+  duration := DomstrToInt(ch.Attributes.GetNamedItem('duration').NodeValue);
+  rollx := DomstrToFloat(ch.Attributes.GetNamedItem('x').NodeValue);
+  rolly := DomstrToFloat(ch.Attributes.GetNamedItem('y').NodeValue);
   rollxa := 0;
   rollya := 0;
-  bordercolorstr := ch.Attributes.GetNamedItem('color1').NodeValue;
+  bordercolorstr := String(ch.Attributes.GetNamedItem('color1').NodeValue);
   borderpixel := string2Pixel(bordercolorstr, format);
   for i := 0 to repeats - 1 do begin
     rollxa := rollxa + rollx; //a = accumulator
@@ -531,12 +545,12 @@ var
   text: utf8string;
 begin
   result := lastFrameIdx; //default if repeats is zero
-  repeats := strtoint(ch.Attributes.GetNamedItem('repeats').NodeValue);
-  duration := strtoint(ch.Attributes.GetNamedItem('duration').NodeValue);
-  font := strtoint(ch.Attributes.GetNamedItem('font').NodeValue);
-  fgcolor := string2Pixel(ch.Attributes.GetNamedItem('color1').NodeValue, format);
-  bgcolor := string2Pixel(ch.Attributes.GetNamedItem('color2').NodeValue, format);
-  text := ch.Attributes.GetNamedItem('comment').NodeValue;
+  repeats := DomstrToInt(ch.Attributes.GetNamedItem('repeats').NodeValue);
+  duration := DomstrToInt(ch.Attributes.GetNamedItem('duration').NodeValue);
+  font := DomstrToInt(ch.Attributes.GetNamedItem('font').NodeValue);
+  fgcolor := string2Pixel(String(ch.Attributes.GetNamedItem('color1').NodeValue), format);
+  bgcolor := string2Pixel(String(ch.Attributes.GetNamedItem('color2').NodeValue), format);
+  text := Utf8String(ch.Attributes.GetNamedItem('comment').NodeValue);
   for i := 0 to repeats - 1 do begin
     result := animation.dataUsed;
     addUint8(dataFrame, animation);
@@ -570,9 +584,9 @@ begin
   animation.dataUsed := 0;
   animation.dataMax := 16777216;
   GetMem(animation.data, animation.dataMax);
-  sx := strtoint(rn.Attributes.GetNamedItem('Xsize').NodeValue);
-  sy := strtoint(rn.Attributes.GetNamedItem('Ysize').NodeValue);
-  format := strtoint(rn.Attributes.GetNamedItem('colorFormat').NodeValue);
+  sx := DomstrToInt(rn.Attributes.GetNamedItem('Xsize').NodeValue);
+  sy := DomstrToInt(rn.Attributes.GetNamedItem('Ysize').NodeValue);
+  format := DomstrToInt(rn.Attributes.GetNamedItem('colorFormat').NodeValue);
   //append header (12byte)
   addUint8(dataHeader, animation);
   addUint32($616e696d, animation); //ascii = anim

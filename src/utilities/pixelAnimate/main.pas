@@ -1,7 +1,7 @@
 unit main;
 
 {
-  Pixel Animate
+  PixelAnimate
 
   SPDX-FileCopyrightText: 2026 Malte Marwedel
   SPDX-License-Identifier: GPL-2.0-or-later
@@ -13,7 +13,7 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls, Spin,
-  ExtCtrls, laz2_DOM, laz2_XMLWrite, laz2_XMLRead, Math, StrUtils, render;
+  ExtCtrls, DOM, XMLWrite, XMLRead, Math, StrUtils, render;
 
 type
 
@@ -127,12 +127,17 @@ type
     g_animationSx: integer;
     g_animationSy: integer;
     g_animationFormat: integer;
+
     procedure GuiUpdate(Sender: TObject);
     procedure LoadFile(filename: utf8String);
     function FirstCommentLine(ch: TDomNode):utf8String;
     procedure PreviewDrawPixel(r, g, b, x, y, sx, sy: integer; var img: TBitmap);
     procedure PreviewDraw(ch: TDomNode);
     function NormalizeColor(c, format: integer): integer;
+
+    function IntToDomstr(val: integer): DOMString;
+    function FloatToDomstr(val: double): DOMString;
+
   public
 
   end;
@@ -149,6 +154,16 @@ implementation
 
 { TForm1 }
 
+function TForm1.IntToDomstr(val: integer): DOMString;
+begin
+  result := DomString(IntToStr(val));
+end;
+
+function TForm1.FloatToDomstr(val: double): DOMString;
+begin
+  result := DomString(FloatToStr(val));
+end;
+
 procedure TForm1.FormCreate(Sender: TObject);
   var img: TBitmap;
 begin
@@ -156,16 +171,18 @@ begin
   //create a root node
   RootNode := doc.CreateElement('storybook');
   doc.Appendchild(RootNode);
-  TDOMElement(RootNode).SetAttribute('Xsize', inttostr(spinedit1.value));
-  TDOMElement(RootNode).SetAttribute('Ysize', inttostr(spinedit2.value));
-  TDOMElement(RootNode).SetAttribute('fileformat', inttostr(FILEFORMAT));
-  TDOMElement(RootNode).SetAttribute('colorFormat', inttostr(spinedit5.value));
+  TDOMElement(RootNode).SetAttribute('Xsize', IntToDomstr(spinedit1.value));
+  TDOMElement(RootNode).SetAttribute('Ysize', IntToDomstr(spinedit2.value));
+  TDOMElement(RootNode).SetAttribute('fileformat', IntToDomstr(FILEFORMAT));
+  TDOMElement(RootNode).SetAttribute('colorFormat', IntToDomstr(spinedit5.value));
   img := TBitmap.Create();
   img.SetSize(image1.width, image1.Height);
   img.canvas.FillRect(0, 0, 4096, 4096);
   image1.Picture.Graphic := img;
   img.free;
   g_draggedButton := mbExtra1; //used extract replacement as there is no "none" state
+  Spinedit6Change(Sender);
+  Spinedit9Change(Sender);
 end;
 
 
@@ -197,7 +214,7 @@ procedure TForm1.Image1MouseDown(Sender: TObject; Button: TMouseButton;
 var
   mx, my, px, py, i, pixelPos, xy: integer;
   ch2: TDomNode;
-  data, dataOrigin, onePixel: string;
+  data, dataOrigin, onePixel: DomString;
 begin
   g_draggedButton := button;
 
@@ -207,9 +224,9 @@ begin
   px := x * xy div image1.width;
   py := y * xy div image1.Height;
   if (button = mbleft) then begin
-    onePixel := Color1Str();
+    onePixel := DomString(Color1Str());
   end else if (button = mbright) then begin
-    onePixel := Color2Str();
+    onePixel := DomString(Color2Str());
   end else
     exit;
   if not assigned(ascene) then
@@ -226,7 +243,7 @@ begin
      if not Assigned(ch2) then begin
        ch2 := doc.CreateElement('line');
        ascene.AppendChild(ch2);
-       ch2.AppendChild(doc.CreateTextNode(StringOfChar('0', mx * render.charsPerColor)));
+       ch2.AppendChild(doc.CreateTextNode(DomString(StringOfChar('0', mx * render.charsPerColor))));
      end;
      if (i = py) then
        break;
@@ -237,7 +254,7 @@ begin
   dataOrigin := ch2.FirstChild.NodeValue;
   data := dataOrigin;
   if Length(data) < px * render.charsPerColor then
-    data := data + StringOfChar('0', mx * render.charsPerColor - Length(data));
+    data := data + DomString(StringOfChar('0', mx * render.charsPerColor - Length(data)));
   pixelPos := px * render.charsPerColor + 1;
   Delete(data, pixelPos, render.charsPerColor);
   Insert(onePixel, data, pixelPos);
@@ -284,32 +301,32 @@ begin
       floatspinedit2.Enabled := false;
       spinedit4.Enabled := false;
       spinedit12.Enabled := false;
-      memo1.text := ascene.Attributes.GetNamedItem('comment').NodeValue;
+      memo1.text := String(ascene.Attributes.GetNamedItem('comment').NodeValue);
       if (ascene.NodeName = 'frame') then begin
         spinedit3.enabled := true;
-        spinedit3.Value := strtoint(ascene.Attributes.GetNamedItem('duration').NodeValue);
+        spinedit3.Value := render.DomstrToInt(ascene.Attributes.GetNamedItem('duration').NodeValue);
         PreviewDraw(ascene);
       end;
       if (ascene.NodeName = 'roll') or (ascene.NodeName = 'shift') then begin
         spinedit3.enabled := true;
-        spinedit3.Value := strtoint(ascene.Attributes.GetNamedItem('duration').NodeValue);
+        spinedit3.Value := render.DomstrToInt(ascene.Attributes.GetNamedItem('duration').NodeValue);
         floatspinedit1.enabled := true;
-        floatspinedit1.Value := strtofloat(ascene.Attributes.GetNamedItem('x').NodeValue);
+        floatspinedit1.Value := render.DomstrToFloat(ascene.Attributes.GetNamedItem('x').NodeValue);
         floatspinedit2.enabled := true;
-        floatspinedit2.Value := strtofloat(ascene.Attributes.GetNamedItem('y').NodeValue);
+        floatspinedit2.Value := render.DomstrToFloat(ascene.Attributes.GetNamedItem('y').NodeValue);
         spinedit4.enabled := true;
-        spinedit4.Value := strtoint(ascene.Attributes.GetNamedItem('repeats').NodeValue);
+        spinedit4.Value := render.DomstrToInt(ascene.Attributes.GetNamedItem('repeats').NodeValue);
       end;
       if (ascene.NodeName = 'text') then begin
         spinedit3.enabled := true;
-        spinedit3.Value := strtoint(ascene.Attributes.GetNamedItem('duration').NodeValue);
+        spinedit3.Value := render.DomstrToInt(ascene.Attributes.GetNamedItem('duration').NodeValue);
         spinedit4.enabled := true;
-        spinedit4.Value := strtoint(ascene.Attributes.GetNamedItem('repeats').NodeValue);
+        spinedit4.Value := render.DomstrToInt(ascene.Attributes.GetNamedItem('repeats').NodeValue);
         spinedit12.enabled := true;
-        spinedit12.Value := strtoint(ascene.Attributes.GetNamedItem('font').NodeValue);
+        spinedit12.Value := render.DomstrToInt(ascene.Attributes.GetNamedItem('font').NodeValue);
       end;
       if (ascene.Attributes.GetNamedItem('color1') <> nil) then begin
-        colorst := ascene.Attributes.GetNamedItem('color1').NodeValue;
+        colorst := String(ascene.Attributes.GetNamedItem('color1').NodeValue);
         pixel := render.string2Pixel(colorst, spinedit5.value);
         spinedit6.Value := pixel.r;
         spinedit7.Value := pixel.g;
@@ -317,7 +334,7 @@ begin
         SpinEdit6Change(Sender);
       end;
       if (ascene.Attributes.GetNamedItem('color2') <> nil) then begin
-        colorst := ascene.Attributes.GetNamedItem('color2').NodeValue;
+        colorst := String(ascene.Attributes.GetNamedItem('color2').NodeValue);
         pixel := render.string2Pixel(colorst, spinedit5.value);
         spinedit9.Value := pixel.r;
         spinedit10.Value := pixel.g;
@@ -330,7 +347,7 @@ end;
 
 procedure TForm1.Memo1Change(Sender: TObject);
 begin
-    TDOMElement(ascene).SetAttribute('comment', memo1.Text);
+    TDOMElement(ascene).SetAttribute('comment', DomString(memo1.Text));
 end;
 
 procedure TForm1.Panel1Click(Sender: TObject);
@@ -371,33 +388,33 @@ end;
 
 procedure TForm1.SpinEdit12Change(Sender: TObject);
 begin
-  TDOMElement(ascene).SetAttribute('font', inttostr(SpinEdit12.Value));
+  TDOMElement(ascene).SetAttribute('font', IntToDomstr(SpinEdit12.Value));
 end;
 
 procedure TForm1.SpinEdit1Change(Sender: TObject);
 begin
-  TDOMElement(RootNode).SetAttribute('Xsize', inttostr(SpinEdit1.Value));
+  TDOMElement(RootNode).SetAttribute('Xsize', IntToDomstr(SpinEdit1.Value));
 end;
 
 procedure TForm1.SpinEdit2Change(Sender: TObject);
 begin
-  TDOMElement(RootNode).SetAttribute('Ysize', inttostr(SpinEdit2.Value));
+  TDOMElement(RootNode).SetAttribute('Ysize', IntToDomstr(SpinEdit2.Value));
 end;
 
 procedure TForm1.SpinEdit3Change(Sender: TObject);
 begin
-  TDOMElement(ascene).SetAttribute('duration', inttostr(spinedit3.value));
+  TDOMElement(ascene).SetAttribute('duration', IntToDomstr(spinedit3.value));
 end;
 
 procedure TForm1.SpinEdit4Change(Sender: TObject);
 begin
-  TDOMElement(ascene).SetAttribute('repeats', inttostr(spinedit4.value));
+  TDOMElement(ascene).SetAttribute('repeats', IntToDomstr(spinedit4.value));
 end;
 
 procedure TForm1.SpinEdit5Change(Sender: TObject);
   var iMax: integer;
 begin
-  TDOMElement(RootNode).SetAttribute('colorFormat', inttostr(SpinEdit5.Value));
+  TDOMElement(RootNode).SetAttribute('colorFormat', IntToDomstr(SpinEdit5.Value));
   iMax := (1 shl SpinEdit5.value) - 1;
   SpinEdit6.MaxValue := imax;
   SpinEdit7.MaxValue := imax;
@@ -434,7 +451,7 @@ begin
   panel1.font.Color := (b shl 16) or (g shl 8) or r;
   if (assigned(ascene)) then
     if (ascene.Attributes.GetNamedItem('color1') <> nil) then
-      TDOMElement(ascene).SetAttribute('color1', Color1Str());
+      TDOMElement(ascene).SetAttribute('color1', DomString(Color1Str()));
 end;
 
 procedure TForm1.SpinEdit9Change(Sender: TObject);
@@ -452,7 +469,7 @@ begin
   panel2.font.Color := (b shl 16) or (g shl 8) or r;
   if (assigned(ascene)) then
     if (ascene.Attributes.GetNamedItem('color2') <> nil) then
-      TDOMElement(ascene).SetAttribute('color2', Color2Str());
+      TDOMElement(ascene).SetAttribute('color2', DomString(Color2Str()));
 end;
 
 procedure TForm1.Timer1Timer(Sender: TObject);
@@ -600,7 +617,7 @@ procedure TForm1.Button8Click(Sender: TObject);
   var ch: TDomNode;
 begin
   ch := doc.CreateElement('frame');
-  TDOMElement(ch).SetAttribute('duration', inttostr(100));
+  TDOMElement(ch).SetAttribute('duration', IntToDomstr(100));
   TDOMElement(ch).SetAttribute('comment', '');
   RootNode.AppendChild(ch);
   GuiUpdate(Sender);
@@ -611,22 +628,22 @@ procedure TForm1.Button9Click(Sender: TObject);
 begin
   ch := doc.CreateElement('roll');
   TDOMElement(ch).SetAttribute('comment', '');
-  TDOMElement(ch).SetAttribute('duration', inttostr(100));
-  TDOMElement(ch).SetAttribute('x', inttostr(1));
-  TDOMElement(ch).SetAttribute('y', inttostr(0));
-  TDOMElement(ch).SetAttribute('repeats', inttostr(5));
+  TDOMElement(ch).SetAttribute('duration', IntToDomstr(100));
+  TDOMElement(ch).SetAttribute('x', IntToDomstr(1));
+  TDOMElement(ch).SetAttribute('y', IntToDomstr(0));
+  TDOMElement(ch).SetAttribute('repeats', IntToDomstr(5));
   RootNode.AppendChild(ch);
   GuiUpdate(Sender);
 end;
 
 procedure TForm1.FloatSpinEdit1Change(Sender: TObject);
 begin
-  TDOMElement(ascene).SetAttribute('x', floattostr(floatspinedit1.value));
+  TDOMElement(ascene).SetAttribute('x', FloatToDomstr(floatspinedit1.value));
 end;
 
 procedure TForm1.FloatSpinEdit2Change(Sender: TObject);
 begin
-    TDOMElement(ascene).SetAttribute('y', floattostr(floatspinedit2.value));
+    TDOMElement(ascene).SetAttribute('y', FloatToDomstr(floatspinedit2.value));
 end;
 
 procedure TForm1.Button1Click(Sender: TObject);
@@ -654,11 +671,11 @@ procedure TForm1.Button11Click(Sender: TObject);
 begin
   ch := doc.CreateElement('text');
   TDOMElement(ch).SetAttribute('comment', '');
-  TDOMElement(ch).SetAttribute('duration', inttostr(100));
-  TDOMElement(ch).SetAttribute('repeats', inttostr(5));
-  TDOMElement(ch).SetAttribute('font', inttostr(1));
-  TDOMElement(ch).SetAttribute('color1', Color1Str());
-  TDOMElement(ch).SetAttribute('color2', Color2Str());
+  TDOMElement(ch).SetAttribute('duration', IntToDomstr(100));
+  TDOMElement(ch).SetAttribute('repeats', IntToDomstr(5));
+  TDOMElement(ch).SetAttribute('font', IntToDomstr(1));
+  TDOMElement(ch).SetAttribute('color1', DomString(Color1Str()));
+  TDOMElement(ch).SetAttribute('color2', DomString(Color2Str()));
   RootNode.AppendChild(ch);
   GuiUpdate(Sender);
 end;
@@ -676,11 +693,11 @@ procedure TForm1.Button13Click(Sender: TObject);
 begin
   ch := doc.CreateElement('shift');
   TDOMElement(ch).SetAttribute('comment', '');
-  TDOMElement(ch).SetAttribute('duration', inttostr(100));
-  TDOMElement(ch).SetAttribute('x', inttostr(1));
-  TDOMElement(ch).SetAttribute('y', inttostr(0));
-  TDOMElement(ch).SetAttribute('repeats', inttostr(5));
-  TDOMElement(ch).SetAttribute('color1', Color1Str());
+  TDOMElement(ch).SetAttribute('duration', IntToDomstr(100));
+  TDOMElement(ch).SetAttribute('x', IntToDomstr(1));
+  TDOMElement(ch).SetAttribute('y', IntToDomstr(0));
+  TDOMElement(ch).SetAttribute('repeats', IntToDomstr(5));
+  TDOMElement(ch).SetAttribute('color1', DomString(Color1Str()));
   RootNode.AppendChild(ch);
   GuiUpdate(Sender);
 end;
@@ -692,14 +709,14 @@ begin
   //the update button
   if rootnode = nil then
     exit;
-  spinedit1.Value := strtoint(RootNode.Attributes.GetNamedItem('Xsize').NodeValue);
-  spinedit2.Value := strtoint(RootNode.Attributes.GetNamedItem('Ysize').NodeValue);
-  spinedit5.Value := strtoint(RootNode.Attributes.GetNamedItem('colorFormat').NodeValue);
+  spinedit1.Value := render.DomstrToInt(RootNode.Attributes.GetNamedItem('Xsize').NodeValue);
+  spinedit2.Value := render.DomstrToInt(RootNode.Attributes.GetNamedItem('Ysize').NodeValue);
+  spinedit5.Value := render.DomstrToInt(RootNode.Attributes.GetNamedItem('colorFormat').NodeValue);
   SpinEdit5Change(Sender);
   bases := RootNode.FirstChild;
   listbox1.Clear;
   while Assigned(bases) do begin
-    temp := bases.NodeName + ' ' + firstCommentLine(bases);
+    temp := Utf8String(bases.NodeName) + ' ' + firstCommentLine(bases);
     listbox1.Items.Add(temp);
     bases := bases.NextSibling;
   end;
@@ -719,7 +736,7 @@ begin
    if (assigned(RootNode)) then begin
      if (RootNode.NodeName = 'storybook') then begin
        if (RootNode.Attributes.GetNamedItem('fileformat') <> nil) then begin
-         fileversion := strtoint(RootNode.Attributes.GetNamedItem('fileformat').NodeValue);
+         fileversion := render.DomstrToInt(RootNode.Attributes.GetNamedItem('fileformat').NodeValue);
        end else begin
          fileversion := 1;
        end;
@@ -744,7 +761,7 @@ begin
    result := '';
    newline := 1;
    if (ch.Attributes.GetNamedItem('comment') <> nil) then begin
-     x := ch.Attributes.GetNamedItem('comment').NodeValue;
+     x := Utf8String(ch.Attributes.GetNamedItem('comment').NodeValue);
      while (newline <= length(x)) do begin
        if (x[newline] = char(10)) or (x[newline] = char(13)) then
          break;
@@ -789,7 +806,7 @@ begin
     if (assigned(ch2)) then begin
       ch3 := ch2.FirstChild;
       if (assigned(ch3)) then begin
-        data := ch3.NodeValue;
+        data := String(ch3.NodeValue);
         for x := 0 to sx - 1 do begin
           //12 hex characters for each pixel
           onePixel := Copy(data, x * 12 + 1, 12);
