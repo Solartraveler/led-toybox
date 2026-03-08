@@ -13,10 +13,13 @@ jobs:
       run: |
         sudo apt update
         sudo apt install -y gcc-arm-none-eabi make freeglut3-dev libpulse-dev libsox-fmt-mp3 jq lazarus-ide
+
+    - name: make Utilities
+      run:  make -C src/utilities
+
     - name: make Apps
-      run: |
-           make -C src/apps
-           make -C src/utilities
+      run: make -C src/apps
+
 #Artifact upload always breaks the CI by becoming deprecated, refusing to repeat pipelines
 #Should this happen once more, I will simply remove artifacts at all.
     - name: Artifacts upload
@@ -28,4 +31,4 @@ jobs:
           src/apps/*/build/*/*.elf
           src/apps/*/build/*/*.tar
           src/apps/*/pc-simulator/pcSimulate
-          src/utilities/pixelAnimate/PixelAnimate
+          src/utilities/pixelAnimate/bin/*
