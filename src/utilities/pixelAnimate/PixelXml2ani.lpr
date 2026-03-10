@@ -21,7 +21,7 @@ var
 begin
   if ParamCount <> 2 then
   begin
-    WriteLn('PixelXml2ani (c) 2026 by Malte Marwedel. Version 0.1');
+    WriteLn('PixelXml2ani (c) 2026 by Malte Marwedel. Version ' + render.progamVersion);
     WriteLn('Usage: <input filename> <output filename>');
     Halt(1);
   end;

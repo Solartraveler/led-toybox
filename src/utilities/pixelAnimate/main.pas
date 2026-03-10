@@ -24,6 +24,7 @@ type
     Button10: TButton;
     Button11: TButton;
     Button12: TButton;
+    Button13: TButton;
     Button2: TButton;
     Button3: TButton;
     Button4: TButton;
@@ -32,6 +33,7 @@ type
     Button7: TButton;
     Button8: TButton;
     Button9: TButton;
+    CheckBox1: TCheckBox;
     ColorDialog1: TColorDialog;
     ColorDialog2: TColorDialog;
     FloatSpinEdit1: TFloatSpinEdit;
@@ -91,6 +93,7 @@ type
     procedure Button7Click(Sender: TObject);
     procedure Button8Click(Sender: TObject);
     procedure Button9Click(Sender: TObject);
+    procedure CheckBox1Change(Sender: TObject);
     procedure FloatSpinEdit1Change(Sender: TObject);
     procedure FloatSpinEdit2Change(Sender: TObject);
     procedure FormCreate(Sender: TObject);
@@ -492,8 +495,7 @@ begin
   img.SetSize(image1.Width, image1.height);
   img.canvas.Brush.Color := $808080;
   img.canvas.FillRect(0, 0, 4096, 4096);
-  bytesPerPixel := 3;
-  if (g_animationFormat > 8) then bytesPerPixel := 6;
+  bytesPerPixel := render.bytesPerPixel(g_animationFormat);
   for y := 0 to g_animationSy - 1 do begin
     for x := 0 to g_animationSx - 1 do begin
       pixel := getPixel(x, y, g_animationFrame, g_animationFormat, g_animationSx, g_animation);
@@ -636,6 +638,11 @@ begin
   GuiUpdate(Sender);
 end;
 
+procedure TForm1.CheckBox1Change(Sender: TObject);
+begin
+  PreviewDraw(ascene);
+end;
+
 procedure TForm1.FloatSpinEdit1Change(Sender: TObject);
 begin
   TDOMElement(ascene).SetAttribute('x', FloatToDomstr(floatspinedit1.value));
@@ -684,7 +691,7 @@ procedure TForm1.Button12Click(Sender: TObject);
 begin
   showmessage('Pixel Animate' + LineEnding +
     '(c) 2026 by Malte Marwedel' + LineEnding +
-    'Version 0.1.0' + LineEnding +
+    'Version ' + render.progamVersion + LineEnding +
     'License: GPL version 2 or later');
 end;
 
@@ -785,7 +792,10 @@ begin
   img.Canvas.Pen.Style := psClear;
   cx := offsetx + x * scaler;
   cy := offsety + y * scaler;
-  img.Canvas.Ellipse(round(cx - radius), round(cy - radius), round(cx + radius), round(cy + radius));
+  if (checkbox1.Checked) then begin
+    img.Canvas.Rectangle(round(cx - radius), round(cy - radius), round(cx + radius), round(cy + radius));
+  end else
+    img.Canvas.Ellipse(round(cx - radius), round(cy - radius), round(cx + radius), round(cy + radius));
 end;
 
 procedure TForm1.PreviewDraw(ch: TDomNode);
@@ -797,6 +807,8 @@ var
 begin
   sx := spinedit1.value;
   sy := spinedit2.value;
+  if not assigned(ch) then
+    exit;
   ch2 := ch.FirstChild;
   img := TBitmap.Create();
   img.SetSize(image1.Width, image1.height);

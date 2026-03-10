@@ -54,7 +54,9 @@ function addFrame(ch: TDOMNode; sx, sy, format: integer; var animation: TBuffer)
 function addRoll(ch: TDOMNode; sx, sy, format: integer; lastFrameIdx: integer; var animation: TBuffer): integer;
 function addShift(ch: TDOMNode; sx, sy, format: integer; lastFrameIdx: integer; var animation: TBuffer): integer;
 function addText(ch: TDOMNode; sx, sy, format: integer; lastFrameIdx: integer; var animation: TBuffer): integer;
+function bytesPerPixel(format: integer): integer;
 
+const progamVersion = '0.2.0';
 
 const charsPerColor = 12;
 const version = 1;
@@ -232,38 +234,64 @@ begin
   end;
 end;
 
-procedure addPixel(pixel: TPixel; var animation: TBuffer);
+function bytesPerPixel(format: integer): integer;
 begin
-  if (pixel.format > 8) then begin
+  if (format > 8) then begin
+    result := 6;
+  end else if (format > 5) then begin
+    result := 3;
+  end else if (format > 2) then begin
+    result := 2;
+  end else
+    result := 1;
+end;
+
+procedure addPixel(pixel: TPixel; var animation: TBuffer);
+var pixelsize: integer;
+begin
+  pixelsize := bytesPerPixel(pixel.format);
+  if (pixelsize = 6) then begin
     addUint16(pixel.b, animation);
     addUint16(pixel.g, animation);
     addUint16(pixel.r, animation);
-  end else begin
+  end else if (pixelsize = 3)  then begin
     addUint8(pixel.b, animation);
     addUint8(pixel.g, animation);
     addUint8(pixel.r, animation);
+  end else if (pixelsize = 2)  then begin
+    addUint8((pixel.b shl 3) or (pixel.g shr 2), animation);
+    addUint8(((pixel.g shl 5) and $60) or pixel.r, animation);
+  end else begin
+    addUint8((pixel.b shl 4) or (pixel.g shl 2) or pixel.r, animation);
   end;
 end;
 
 function getPixel(x, y, frameIdx, format, sx: integer; animation: TBuffer): TPixel;
 var offset, pixelsize: integer;
 begin
-  if (format > 8) then begin
-    pixelsize := 6;
-  end else begin
-    pixelsize := 3;
-  end;
+  pixelsize := bytesPerPixel(format);
   offset := frameIdx + 3 + (y * sx + x) * pixelsize; //3 = frame header size
   result.format := format;
   if ((offset + pixelsize) < animation.dataUsed) then begin
-    if (format > 8) then begin
+    if (pixelsize = 6) then begin
       result.b := getUint16(offset + 0, animation);
       result.g := getUint16(offset + 2, animation);
       result.r := getUint16(offset + 4, animation);
-    end else begin
+    end else if (pixelsize = 3) then begin
       result.b := getUint8(offset + 0, animation);
       result.g := getUint8(offset + 1, animation);
       result.r := getUint8(offset + 2, animation);
+    end else if (pixelsize = 2) then begin
+     result.b := getUint8(offset + 0, animation); //5 bits blue - 3 bits green in first byte
+     result.r := getUint8(offset + 1, animation); //2 bits green - 5 bits red in second byte
+     result.g := ((result.b and $7) shl 2) or (result.r shr 5);
+     result.b := result.b shr 3;
+     result.r := result.r and $1F;
+    end else begin
+     result.b := getUint8(offset, animation); //2 bits blue, 2 bits green, 2 bits red
+     result.g := (result.b shr 2) and $3;
+     result.r := result.b and $3;
+     result.b := result.b shr 4;
     end;
   end;
 end;
@@ -274,20 +302,21 @@ var
   pixelsize, offset: integer;
 begin
   if (x < sx) and (y < sy) and (x >= 0) and (y >= 0) then begin
-    if (pixel.format > 8) then begin
-      pixelsize := 6;
-    end else begin
-      pixelsize := 3;
-    end;
+    pixelsize := bytesPerPixel(pixel.format);
     offset := frameIdx + 3 + (y * sx + x) * pixelsize; //3 = frame header size
-    if (pixel.format > 8) then begin
+    if (pixelsize = 6) then begin
       setUint16(offset + 0, pixel.b, animation);
       setUint16(offset + 2, pixel.g, animation);
       setUint16(offset + 4, pixel.r, animation);
-    end else begin
+    end else if (pixelsize = 3) then begin
       setUint8(offset + 0, pixel.b, animation);
       setUint8(offset + 1, pixel.g, animation);
       setUint8(offset + 2, pixel.r, animation);
+    end else if (pixelsize = 2) then begin
+      setUint8(offset + 0, (pixel.b shl 3) or (pixel.g shr 2), animation);
+      setUint8(offset + 1, ((pixel.g shl 5) and $60) or pixel.r, animation);
+    end else begin
+      setUint8(offset, (pixel.b shl 4) or (pixel.g shl 2) or pixel.r, animation);
     end;
   end;
 end;
