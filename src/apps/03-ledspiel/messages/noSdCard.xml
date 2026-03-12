@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<storybook Xsize="5" Ysize="5" fileformat="1" colorFormat="2">
+  <text font="2" color1="00000000FFFF" color2="000000000000" comment="KEINE SD KARTE" repeats="60" duration="250"/>
+</storybook>

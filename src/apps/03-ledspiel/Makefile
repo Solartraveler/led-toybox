@@ -154,9 +154,13 @@ C_SOURCES += arm/keyInput.c
 
 
 # ASM sources
-ASM_SOURCES =  \
-$(SHARED_INIT)/startup_$(CHIP).s
+ASM_SOURCES = $(SHARED_INIT)/startup_$(CHIP).s
 
+ANI_SOURCES = charging.xml
+ANI_SOURCES += errorSdCard.xml
+ANI_SOURCES += noFiles.xml
+ANI_SOURCES += noSdCard.xml
+ANI_SOURCES += usbConnected.xml
 
 #######################################
 # binaries
@@ -177,6 +181,8 @@ SZ = $(PREFIX)size
 endif
 HEX = $(CP) -O ihex
 BIN = $(CP) -O binary -S
+
+XML2ANI = $(UTILITIES)/pixelAnimate/bin/PixelXml2ani
 
 #######################################
 # CFLAGS
@@ -232,6 +238,7 @@ C_INCLUDES += -I$(FATFS)
 C_INCLUDES += -I$(LIBMAD)
 C_INCLUDES += -Iarm
 C_INCLUDES += -I.
+C_INCLUDES += -I$(BUILD_DIR)
 
 
 # compile gcc flags
@@ -280,7 +287,19 @@ vpath %.c $(sort $(dir $(C_SOURCES)))
 OBJECTS += $(addprefix $(BUILD_DIR)/,$(notdir $(ASM_SOURCES:.s=.o)))
 vpath %.s $(sort $(dir $(ASM_SOURCES)))
 
-$(BUILD_DIR)/%.o: %.c Makefile | $(BUILD_DIR)
+GENHEADER = $(addprefix $(BUILD_DIR)/,$(notdir $(ANI_SOURCES:.xml=.h)))
+
+ANIFILES = $(addprefix $(BUILD_DIR)/,$(notdir $(ANI_SOURCES:.xml=.ani)))
+
+.SECONDARY: $(ANIFILES)
+
+$(BUILD_DIR)/%.ani: messages/%.xml Makefile | $(BUILD_DIR)
+	$(XML2ANI) $< $@
+
+$(BUILD_DIR)/%.h: $(BUILD_DIR)/%.ani Makefile | $(BUILD_DIR)
+	xxd -i $< | sed 's/unsigned/const unsigned/g' | sed 's/build_$(CHIP)_$(BOARD)_/build_/g' > $@
+
+$(BUILD_DIR)/%.o: %.c Makefile $(GENHEADER) | $(BUILD_DIR)
 	$(CC) -c $(CFLAGS) -Wa,-a,-ad,-alms=$(BUILD_DIR)/$(notdir $(<:.c=.lst)) $< -o $@
 
 $(BUILD_DIR)/%.o: %.s Makefile | $(BUILD_DIR)
