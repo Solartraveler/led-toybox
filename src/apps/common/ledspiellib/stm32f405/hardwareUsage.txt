@@ -3,6 +3,9 @@ Shared sources:
 timer32Bit:    TIM2
 rs232debug:    USART1, USART1_IRQHandler
 stackSampler:  TIM10
+flash:         DMA2 Stream 2, DMA2 Stream 3, SPI1
+ledMatrix:     TIM1, TIM8, DMA2 Stream 1, DMA2 Stream 5
+audioOut:      TIM7, DAC1, DMA1 Stream 2
 
 Projects:
-03-ledspiel:   TIM7, DAC1
+
