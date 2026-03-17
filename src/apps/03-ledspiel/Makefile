@@ -114,6 +114,7 @@ C_SOURCES += $(STM_HAL)/Src/$(CHIPFAMILY)_hal_tim.c
 C_SOURCES += $(STM_HAL)/Src/$(CHIPFAMILY)_hal_tim_ex.c
 C_SOURCES += $(LEDSPIELLIB)/boxusb.c
 C_SOURCES += $(LEDSPIELLIB)/flash.c
+C_SOURCES += $(LEDSPIELLIB)/ledMatrix.c
 C_SOURCES += $(LEDSPIELLIB)/leds.c
 C_SOURCES += $(LEDSPIELLIB)/mcu.c
 C_SOURCES += $(LEDSPIELLIB)/rs232debug.c

@@ -22,6 +22,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "ledspiellib/boxusb.h"
 #include "ledspiellib/flash.h"
+#include "ledspiellib/ledMatrix.h"
 #include "ledspiellib/leds.h"
 #include "ledspiellib/mcu.h"
 #include "ledspiellib/rs232debug.h"
@@ -31,6 +32,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "audioOut.h"
 #include "filesystem.h"
 #include "keyInput.h"
+
 #include "main.h"
 #include "mp3Playback.h"
 #include "sdmmcAccess.h"
@@ -44,6 +46,7 @@ typedef struct {
 	bool playing;
 	uint32_t ledTime;
 	float volume;
+	uint16_t brightness;
 
 } ledspielState_t;
 
@@ -63,6 +66,49 @@ void MainMenu(void) {
 	printf("a: Audio test\r\n");
 	printf("+: Playback volume increment\r\n");
 	printf("-: Playback volume decrement\r\n");
+	printf("y: Increase brightness\r\n");
+	printf("x: Decrease brightness\r\n");
+}
+
+void FrameTest(void) {
+	MatrixInit(3);
+	uint8_t data[MATRIX_X * MATRIX_Y] = {0};
+#if 1
+	data[0] = 0x3; //red
+	data[1] = 0x3 << 2; //green
+	data[2] = 0x3 << 4; //blue
+
+	data[MATRIX_X * 1] = 0x2;
+	data[MATRIX_X * 1 + 1] = 0x2 << 2;
+	data[MATRIX_X * 1 + 2] = 0x2 << 4;
+	data[MATRIX_X * 1 + 3] = 0x15; //darkest red + green + blue = white
+	data[MATRIX_X * 1 + 4] = 0x2A; //medium red + green + blue = white
+
+	data[MATRIX_X * 2] = 0x1;
+	data[MATRIX_X * 2 + 1] = 0x1 << 2;
+	data[MATRIX_X * 2 + 2] = 0x1 << 4;
+	data[MATRIX_X * 2 + 3] = 0x3F;  //bright red + green + blue = white
+	data[MATRIX_X * 2 + 4] = 0x3C;
+
+	data[MATRIX_X * 3] = 0x0;
+	data[MATRIX_X * 3 + 1] = 0x5;
+	data[MATRIX_X * 3 + 2] = 0x6;
+	data[MATRIX_X * 3 + 3] = 0x7;
+	data[MATRIX_X * 3 + 4] = 0x9;
+
+	data[MATRIX_X * 4 + 0] = 0xB;
+	data[MATRIX_X * 4 + 1] = 0xC;
+	data[MATRIX_X * 4 + 2] = 0xD;
+	data[MATRIX_X * 4 + 3] = 0xE;
+	data[MATRIX_X * 4 + 4] = 0xF;
+#else
+	data[0] = 0x3;
+	data[6] = 0xC;
+	data[12] = 0x30;
+	data[3] = 0x1;
+	data[4] = 0x2;
+#endif
+	MatrixFrame(1, data);
 }
 
 void AppInit(void) {
@@ -72,6 +118,8 @@ void AppInit(void) {
 	   There are power of two scalers for the SD card, which supports 25MHz,
 	   so 24MHz can be used. Also mp3 needs around 40MHz, so 48MHz is propably the best
 	   to be used.
+	   It turns out, while mp3 plays with 48MHz, the DMA transfer from the SD card
+	   gets data errors as soon as the DMA is used for the LED matrix too.
 	*/
 	uint8_t clockError = McuClockToHsePll(F_CPU, RCC_HCLK_DIV1);
 	Rs232Init();
@@ -92,11 +140,13 @@ void AppInit(void) {
 #else
 	FlashEnable(2);
 #endif
-	SdmmcCrcMode(SDMMC_CRC_WRITE);
+	//SdmmcCrcMode(SDMMC_CRC_WRITE);
 	FilesystemMount();
 	g_ledspielState.usbEnabled = false;
 	Led1Green();
 	g_ledspielState.volume = 1.0;
+	g_ledspielState.brightness = 255;
+	FrameTest();
 	printf("Ready. Press h for available commands\r\n");
 	StackSampleCheck();
 }
@@ -289,13 +339,29 @@ void VolumeDown(void) {
 	VolumeSet();
 }
 
+void BrightnessUp(void) {
+	if (g_ledspielState.brightness < 255) {
+		g_ledspielState.brightness++;
+	}
+	MatrixBrightness(g_ledspielState.brightness);
+	printf("Brightness: %u\r\n", (unsigned int)g_ledspielState.brightness);
+}
+
+void BrightnessDown(void) {
+	if (g_ledspielState.brightness) {
+		g_ledspielState.brightness--;
+	}
+	MatrixBrightness(g_ledspielState.brightness);
+	printf("Brightness: %u\r\n", (unsigned int)g_ledspielState.brightness);
+}
+
 void AppCycle(void) {
 	uint32_t time = HAL_GetTick();
 	if ((time - g_ledspielState.ledTime) >= 250) {
 		if (g_ledspielState.ledState) {
-			Led2Off();
+			//Led2Off();
 		} else {
-			Led2Green();
+			//Led2Green();
 		}
 		g_ledspielState.ledState = !g_ledspielState.ledState;
 		g_ledspielState.ledTime = time;
@@ -314,8 +380,8 @@ void AppCycle(void) {
 		case 'l': ListFiles("/", "", 2); break;
 		case '+': VolumeUp(); break;
 		case '-': VolumeDown(); break;
-		case 'w':
-		case 'p':
+		case 'y': BrightnessUp(); break;
+		case 'x': BrightnessDown(); break;
 			if (g_ledspielState.usbEnabled) {
 				StorageCycle(input);
 			}
@@ -329,5 +395,21 @@ void AppCycle(void) {
 	}
 	WatchdogServe();
 	StackSampleCheck();
+	printf("Tim1: %u Tim8: %u, DMA2-5 %u, DMA2-1: %u, CR1-1: %x, CR8-1: %x\r\n", TIM1->CNT, TIM8->CNT, DMA2_Stream5->NDTR, DMA2_Stream1->NDTR, TIM1->CR1, TIM8->CR1);
+#if 1
+printf("DMA2 Stream5: FE=%lu DME=%lu TE=%lu HT=%lu TC=%lu\r\n",
+       (DMA2->HISR >> 6) & 1,
+       (DMA2->HISR >> 8) & 1,
+       (DMA2->HISR >> 9) & 1,
+       (DMA2->HISR >> 10) & 1,
+       (DMA2->HISR >> 11) & 1);
+
+printf("DMA2 Stream1: FE=%lu DME=%lu TE=%lu HT=%lu TC=%lu\r\n",
+       (DMA2->LISR >> 6) & 1,
+       (DMA2->LISR >> 8) & 1,
+       (DMA2->LISR >> 9) & 1,
+       (DMA2->LISR >> 10) & 1,
+       (DMA2->LISR >> 11) & 1);
+#endif
 }
 
