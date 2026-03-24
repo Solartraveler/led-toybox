@@ -274,6 +274,7 @@ bool PlaybackProcess(void) {
 			g_playerState.ticksTotal += stamp;
 			Timer32BitStop();
 			PlaybackEvaluatePerformance();
+			AudioStop();
 			return true;
 		}
 	}
@@ -312,6 +313,9 @@ bool PlaybackProcess(void) {
 	uint32_t stamp = Timer32BitGet();
 	g_playerState.ticksTotal += stamp;
 	Timer32BitStop();
+	if (!g_playerState.play) {
+		AudioStop(); //Otherwise we end up with playing the output FIFO in a loop (sounds annoying)
+	}
 	//printf("Read: %u\r\n", (unsigned int)g_playerState.bytesRead);
 	return true;
 }

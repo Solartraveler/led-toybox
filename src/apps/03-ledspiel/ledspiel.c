@@ -22,6 +22,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "ledspiellib/boxusb.h"
 #include "ledspiellib/flash.h"
+#include "ledspiellib/ledMatrix.h"
 #include "ledspiellib/leds.h"
 #include "ledspiellib/mcu.h"
 #include "ledspiellib/rs232debug.h"
@@ -31,6 +32,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "audioOut.h"
 #include "filesystem.h"
 #include "keyInput.h"
+
 #include "main.h"
 #include "mp3Playback.h"
 #include "sdmmcAccess.h"
@@ -40,10 +42,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 typedef struct {
 	bool usbEnabled;
-	bool ledState;
 	bool playing;
-	uint32_t ledTime;
 	float volume;
+	uint16_t brightness;
+	uint8_t frameTest;
 
 } ledspielState_t;
 
@@ -63,6 +65,107 @@ void MainMenu(void) {
 	printf("a: Audio test\r\n");
 	printf("+: Playback volume increment\r\n");
 	printf("-: Playback volume decrement\r\n");
+	printf("y: Increase brightness\r\n");
+	printf("x: Decrease brightness\r\n");
+	printf("c: LED frame test\r\n");
+}
+
+#define FLIPBYTESU16(X) ((((X) >> 8) & 0xFF) | (((X) << 8) & 0xFF00))
+
+void FrameTest(uint8_t id) {
+	if (id == 0) {
+		printf("Disabled\r\n");
+		MatrixDisable();
+	} else if (id == 1) { //check a lot of brighness variants in 2 bits per color mode
+		printf("2 bit variant with many different colors\r\n");
+		MatrixInit(3);
+		uint8_t data[MATRIX_X * MATRIX_Y] = {0};
+		data[MATRIX_X * 0 + 0] = 0x3; //red
+		data[MATRIX_X * 0 + 1] = 0x3 << 2; //green
+		data[MATRIX_X * 0 + 2] = 0x3 << 4; //blue
+
+		data[MATRIX_X * 1 + 0] = 0x2;
+		data[MATRIX_X * 1 + 1] = 0x2 << 2;
+		data[MATRIX_X * 1 + 2] = 0x2 << 4;
+		data[MATRIX_X * 1 + 3] = 0x15; //darkest red + green + blue = white
+		data[MATRIX_X * 1 + 4] = 0x2A; //medium red + green + blue = white
+
+		data[MATRIX_X * 2 + 0] = 0x1;
+		data[MATRIX_X * 2 + 1] = 0x1 << 2;
+		data[MATRIX_X * 2 + 2] = 0x1 << 4;
+		data[MATRIX_X * 2 + 3] = 0x3F;  //bright red + green + blue = white
+		data[MATRIX_X * 2 + 4] = 0x3C;
+
+		data[MATRIX_X * 3 + 0] = 0x0;
+		data[MATRIX_X * 3 + 1] = 0x5;
+		data[MATRIX_X * 3 + 2] = 0x6;
+		data[MATRIX_X * 3 + 3] = 0x7;
+		data[MATRIX_X * 3 + 4] = 0x9;
+
+		data[MATRIX_X * 4 + 0] = 0xB;
+		data[MATRIX_X * 4 + 1] = 0xC;
+		data[MATRIX_X * 4 + 2] = 0xD;
+		data[MATRIX_X * 4 + 3] = 0xE;
+		data[MATRIX_X * 4 + 4] = 0xF;
+		MatrixFrame(1, data);
+	} else if (id == 2) { //very simple pattern, look if there are 5 dots who do not move
+		printf("2 bit variant, simple pattern\r\n");
+		MatrixInit(3);
+		uint8_t data[MATRIX_X * MATRIX_Y] = {0};
+		data[MATRIX_X * 0 + 0] = 0x3;
+		data[MATRIX_X * 0 + 3] = 0x1;
+		data[MATRIX_X * 0 + 4] = 0x2;
+		data[MATRIX_X * 1 + 1] = 0xC;
+		data[MATRIX_X * 2 + 2] = 0x30;
+		MatrixFrame(1, data);
+	} else if (id == 3) { //15 bit mode, 5 bit per color, 2 bytes per pixel
+		printf("5 bit variant\r\n");
+		MatrixInit((1 << 5) - 1);
+		//sqrt(0x1F) = ~0x5
+		uint16_t data[MATRIX_X * MATRIX_Y] = {0};
+		data[MATRIX_X * 0 + 0] = FLIPBYTESU16(0x1F); //red maximum
+		data[MATRIX_X * 0 + 1] = FLIPBYTESU16(0x05); //medium
+		data[MATRIX_X * 0 + 2] = FLIPBYTESU16(0x01); //lowest
+		data[MATRIX_X * 1 + 0] = FLIPBYTESU16(0x1F << 5); //green, 2. line
+		data[MATRIX_X * 1 + 1] = FLIPBYTESU16(0x05 << 5);
+		data[MATRIX_X * 1 + 2] = FLIPBYTESU16(0x01 << 5);
+		data[MATRIX_X * 2 + 0] = FLIPBYTESU16(0x1F << 10); //blue 3. line
+		data[MATRIX_X * 2 + 1] = FLIPBYTESU16(0x05 << 10);
+		data[MATRIX_X * 2 + 2] = FLIPBYTESU16(0x01 << 10);
+		MatrixFrame(2, (uint8_t *)data);
+	} else if (id == 4) { //24 bit mode, one byte per color, 3 bytes per pixel
+		printf("8 bit variant\r\n");
+#define BYTES_PER_PIXEL3 3
+		MatrixInit(255);
+		//sqrt(0xFF) = ~0x10
+		uint8_t data[MATRIX_X * MATRIX_Y * BYTES_PER_PIXEL3] = {0};
+		data[MATRIX_X * 0 * BYTES_PER_PIXEL3 + BYTES_PER_PIXEL3 * 0 + 2] = 0xFF; //red maximum
+		data[MATRIX_X * 0 * BYTES_PER_PIXEL3 + BYTES_PER_PIXEL3 * 1 + 2] = 0x10; //medium
+		data[MATRIX_X * 0 * BYTES_PER_PIXEL3 + BYTES_PER_PIXEL3 * 2 + 2] = 0x01; //lowest
+		data[MATRIX_X * 1 * BYTES_PER_PIXEL3 + BYTES_PER_PIXEL3 * 0 + 1] = 0xFF; //green, 2. line
+		data[MATRIX_X * 1 * BYTES_PER_PIXEL3 + BYTES_PER_PIXEL3 * 1 + 1] = 0x10;
+		data[MATRIX_X * 1 * BYTES_PER_PIXEL3 + BYTES_PER_PIXEL3 * 2 + 1] = 0x01;
+		data[MATRIX_X * 2 * BYTES_PER_PIXEL3 + BYTES_PER_PIXEL3 * 0 + 0] = 0xFF; //blue 3. line
+		data[MATRIX_X * 2 * BYTES_PER_PIXEL3 + BYTES_PER_PIXEL3 * 1 + 0] = 0x10;
+		data[MATRIX_X * 2 * BYTES_PER_PIXEL3 + BYTES_PER_PIXEL3 * 2 + 0] = 0x01;
+		MatrixFrame(BYTES_PER_PIXEL3, data);
+	} else if (id == 5) { //27 bit mode, two bytes per color, 6 bytes per pixel
+		printf("9 bit variant\r\n");
+#define U16_PER_PIXEL3 3
+		MatrixInit(511);
+		//sqrt(0x1FF) = ~0x16
+		uint16_t data[MATRIX_X * MATRIX_Y * BYTES_PER_PIXEL3] = {0};
+		data[MATRIX_X * 0 * U16_PER_PIXEL3 + U16_PER_PIXEL3 * 0 + 2] = FLIPBYTESU16(0x1FF); //red maximum
+		data[MATRIX_X * 0 * U16_PER_PIXEL3 + U16_PER_PIXEL3 * 1 + 2] = FLIPBYTESU16(0x016); //medium
+		data[MATRIX_X * 0 * U16_PER_PIXEL3 + U16_PER_PIXEL3 * 2 + 2] = FLIPBYTESU16(0x001); //lowest
+		data[MATRIX_X * 1 * U16_PER_PIXEL3 + U16_PER_PIXEL3 * 0 + 1] = FLIPBYTESU16(0x1FF); //green, 2. line
+		data[MATRIX_X * 1 * U16_PER_PIXEL3 + U16_PER_PIXEL3 * 1 + 1] = FLIPBYTESU16(0x016);
+		data[MATRIX_X * 1 * U16_PER_PIXEL3 + U16_PER_PIXEL3 * 2 + 1] = FLIPBYTESU16(0x001);
+		data[MATRIX_X * 2 * U16_PER_PIXEL3 + U16_PER_PIXEL3 * 0 + 0] = FLIPBYTESU16(0x1FF); //blue 3. line
+		data[MATRIX_X * 2 * U16_PER_PIXEL3 + U16_PER_PIXEL3 * 1 + 0] = FLIPBYTESU16(0x016);
+		data[MATRIX_X * 2 * U16_PER_PIXEL3 + U16_PER_PIXEL3 * 2 + 0] = FLIPBYTESU16(0x001);
+		MatrixFrame(U16_PER_PIXEL3 * sizeof(uint16_t), (uint8_t*)data);
+	}
 }
 
 void AppInit(void) {
@@ -72,6 +175,8 @@ void AppInit(void) {
 	   There are power of two scalers for the SD card, which supports 25MHz,
 	   so 24MHz can be used. Also mp3 needs around 40MHz, so 48MHz is propably the best
 	   to be used.
+	   It turns out, while mp3 plays with 48MHz, the DMA transfer from the SD card
+	   gets data errors as soon as the DMA is used for the LED matrix too.
 	*/
 	uint8_t clockError = McuClockToHsePll(F_CPU, RCC_HCLK_DIV1);
 	Rs232Init();
@@ -97,6 +202,7 @@ void AppInit(void) {
 	g_ledspielState.usbEnabled = false;
 	Led1Green();
 	g_ledspielState.volume = 1.0;
+	g_ledspielState.brightness = 255;
 	printf("Ready. Press h for available commands\r\n");
 	StackSampleCheck();
 }
@@ -261,7 +367,7 @@ void PlayContinue(void) {
 		PlaySelectFilename(1, 0, filename, sizeof(filename));
 		printf("Selected %s\r\n", filename);
 		g_ledspielState.playing = true;
-		PlaybackStart(filename, 1.0);
+		PlaybackStart(filename, g_ledspielState.volume);
 	}
 	PlaybackProcess();
 }
@@ -289,17 +395,28 @@ void VolumeDown(void) {
 	VolumeSet();
 }
 
-void AppCycle(void) {
-	uint32_t time = HAL_GetTick();
-	if ((time - g_ledspielState.ledTime) >= 250) {
-		if (g_ledspielState.ledState) {
-			Led2Off();
-		} else {
-			Led2Green();
-		}
-		g_ledspielState.ledState = !g_ledspielState.ledState;
-		g_ledspielState.ledTime = time;
+void BrightnessUp(void) {
+	if (g_ledspielState.brightness < 255) {
+		g_ledspielState.brightness++;
 	}
+	MatrixBrightness(g_ledspielState.brightness);
+	printf("Brightness: %u\r\n", (unsigned int)g_ledspielState.brightness);
+}
+
+void BrightnessDown(void) {
+	if (g_ledspielState.brightness) {
+		g_ledspielState.brightness--;
+	}
+	MatrixBrightness(g_ledspielState.brightness);
+	printf("Brightness: %u\r\n", (unsigned int)g_ledspielState.brightness);
+}
+
+void LedFrameTest(void) {
+	g_ledspielState.frameTest = (g_ledspielState.frameTest + 1) % 6;
+	FrameTest(g_ledspielState.frameTest);
+}
+
+void AppCycle(void) {
 	char input = Rs232GetChar();
 	if (input) {
 		printf("%c", input);
@@ -314,8 +431,9 @@ void AppCycle(void) {
 		case 'l': ListFiles("/", "", 2); break;
 		case '+': VolumeUp(); break;
 		case '-': VolumeDown(); break;
-		case 'w':
-		case 'p':
+		case 'y': BrightnessUp(); break;
+		case 'x': BrightnessDown(); break;
+		case 'c': LedFrameTest(); break;
 			if (g_ledspielState.usbEnabled) {
 				StorageCycle(input);
 			}
