@@ -42,11 +42,18 @@ SPDX-License-Identifier: BSD-3-Clause
 static bool g_flashInitSuccess;
 
 static void FlashChipSelect(bool selected) {
-	GPIO_PinState state = GPIO_PIN_SET;
 	if (selected) {
-		state = GPIO_PIN_RESET;
+		SdCs_GPIO_Port->BSRR = SdCs_Pin << 16;
+	} else {
+		SdCs_GPIO_Port->BSRR = SdCs_Pin;
 	}
-	HAL_GPIO_WritePin(SdCs_GPIO_Port, SdCs_Pin, state);
+	uint16_t readback = SdCs_GPIO_Port->ODR & SdCs_Pin;
+	if (readback && selected) {
+		printf("Error, is 1, should be 0\r\n");
+	}
+	if ((readback == 0) && (selected == 0)) {
+		printf("Error, is 0, should be 1\r\n");
+	}
 }
 
 #ifdef DMA_ENABLED

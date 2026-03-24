@@ -119,6 +119,9 @@ static inline uint8_t SpiPlatformTransferBackground(SPI_TypeDef * pSpi, DMA_Stre
 		pDmaTx->CR &= ~DMA_SxCR_MINC;
 	}
 	pDmaTx->CR |= DMA_SxCR_EN;
+	/*Right after enabling, the FIFO error DMA_LISR_FEIF3 is set,
+	  no matter if FIFO or direct mode is used. Burst size also changes nothing.
+	*/
 	//SpiPlatformRegisterPrint(pSpi);
 	//SpiPlatformDmaRegisterPrint(pDmaTx, pDmaRx);
 	return result;
