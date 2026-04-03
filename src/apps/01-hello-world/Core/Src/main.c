@@ -329,7 +329,7 @@ void AudioStop(void) {
 }
 
 void AudioPlay(uint16_t frequency) {
-	static uint16_t data[SINE_VALUES];
+	RAM_SUPPORTS_DMA static uint16_t data[SINE_VALUES];
 	float pi2 = (float)M_PI * (float)2.0;
 	for (uint32_t i = 0; i < SINE_VALUES; i++) {
 		data[i] = ((float)DAC_MAX/2) + ((float)DAC_MAX/2) * sinf((float)i * pi2 / (float)SINE_VALUES);

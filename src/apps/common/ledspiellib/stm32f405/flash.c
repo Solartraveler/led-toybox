@@ -63,8 +63,8 @@ static void FlashChipSelect(bool selected) {
 /*If the buffer given for the SdTransfer is on the stack and if the stack is in the ccm RAM,
   it can not be used for DMA. Therefore some buffer in the SRAM1 or SRAM2 needs to be used.
 */
-static uint8_t g_dmaBufferTx[DMA_BUFFER_SIZE];
-static uint8_t g_dmaBufferRx[DMA_BUFFER_SIZE];
+RAM_SUPPORTS_DMA static uint8_t g_dmaBufferTx[DMA_BUFFER_SIZE];
+RAM_SUPPORTS_DMA static uint8_t g_dmaBufferRx[DMA_BUFFER_SIZE];
 
 static void SdTransferDmaBlock(const uint8_t * dataOut, uint8_t * dataIn, size_t len) {
 	uint8_t transferMode = SpiPlatformTransferBackground(SPIPORT, DMASTREAMTX, DMASTREAMRX,

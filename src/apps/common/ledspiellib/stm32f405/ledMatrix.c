@@ -55,7 +55,7 @@ This would double the required memory amount.
 
 static_assert(MATRIX_X * MATRIX_COLORS_PER_PIXEL <= 16, "Error, one port only supports 16 channels");
 
-static uint16_t g_matrixBuffer[MATRIX_COLORS_VAL_MAX * MATRIX_Y];
+RAM_SUPPORTS_DMA static uint16_t g_matrixBuffer[MATRIX_COLORS_VAL_MAX * MATRIX_Y];
 static uint16_t g_colorMax;
 /*
 0 = invalid value, timers will not run, MatrixStop() ends in an endless loop
@@ -64,7 +64,7 @@ MATRIX_DIM_FACTOR_MAX = (1 / MATRIX_DIM_FACTOR_MAX) *  maximum brighness ) = min
 */
 static uint16_t g_dimFactor = 1;
 
-static uint32_t g_lineDriver[MATRIX_DIM_FACTOR_MAX * MATRIX_Y];
+RAM_SUPPORTS_DMA static uint32_t g_lineDriver[MATRIX_DIM_FACTOR_MAX * MATRIX_Y];
 
 void MatrixStop(void) {
 	if (TIM1->CR1 & TIM_CR1_CEN) {

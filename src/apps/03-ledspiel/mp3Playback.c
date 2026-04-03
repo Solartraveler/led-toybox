@@ -35,7 +35,7 @@
 #define OVERLAP_BUFFER_SIZE (2 * 32 * 18 * sizeof(mad_fixed_t))
 
 //Should be accessible by DMA!
-uint16_t g_dacFifoBuffer[OUTPUT_BUFFER_ELEMENTS];
+RAM_SUPPORTS_DMA static uint16_t g_dacFifoBuffer[OUTPUT_BUFFER_ELEMENTS];
 
 typedef struct {
 	FIL f; //file to read the input data from
@@ -62,7 +62,7 @@ typedef struct {
 } playerState_t;
 
 //Currently ccmram is not initialized
-__attribute__((section(".ccmram"), aligned(4))) playerState_t g_playerState;
+RAM_NO_DMA playerState_t g_playerState;
 
 //A big thank you to https://stackoverflow.com/questions/39803572/libmad-playback-too-fast-if-read-in-chunks
 enum mad_flow MadInput(void *data, struct mad_stream *stream) {
