@@ -25,6 +25,7 @@ type
     Button11: TButton;
     Button12: TButton;
     Button13: TButton;
+    Button14: TButton;
     Button2: TButton;
     Button3: TButton;
     Button4: TButton;
@@ -84,6 +85,7 @@ type
     procedure Button11Click(Sender: TObject);
     procedure Button12Click(Sender: TObject);
     procedure Button13Click(Sender: TObject);
+    procedure Button14Click(Sender: TObject);
     procedure Button1Click(Sender: TObject);
     procedure Button2Click(Sender: TObject);
     procedure Button3Click(Sender: TObject);
@@ -327,6 +329,10 @@ begin
         spinedit4.Value := render.DomstrToInt(ascene.Attributes.GetNamedItem('repeats').NodeValue);
         spinedit12.enabled := true;
         spinedit12.Value := render.DomstrToInt(ascene.Attributes.GetNamedItem('font').NodeValue);
+      end;
+      if (ascene.NodeName = 'pause') then begin
+        spinedit3.enabled := true;
+        spinedit3.Value := render.DomstrToInt(ascene.Attributes.GetNamedItem('duration').NodeValue);
       end;
       if (ascene.Attributes.GetNamedItem('color1') <> nil) then begin
         colorst := String(ascene.Attributes.GetNamedItem('color1').NodeValue);
@@ -705,6 +711,16 @@ begin
   TDOMElement(ch).SetAttribute('y', IntToDomstr(0));
   TDOMElement(ch).SetAttribute('repeats', IntToDomstr(5));
   TDOMElement(ch).SetAttribute('color1', DomString(Color1Str()));
+  RootNode.AppendChild(ch);
+  GuiUpdate(Sender);
+end;
+
+procedure TForm1.Button14Click(Sender: TObject);
+  var ch: TDomNode;
+begin
+  ch := doc.CreateElement('pause');
+  TDOMElement(ch).SetAttribute('comment', '');
+  TDOMElement(ch).SetAttribute('duration', IntToDomstr(100));
   RootNode.AppendChild(ch);
   GuiUpdate(Sender);
 end;

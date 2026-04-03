@@ -13,7 +13,7 @@ unit render;
 interface
 
 uses
-  Classes, SysUtils, DOM, StrUtils;
+  Classes, SysUtils, DOM, StrUtils, dialogs;
 
 type
   TBuffer = record
@@ -54,9 +54,10 @@ function addFrame(ch: TDOMNode; sx, sy, format: integer; var animation: TBuffer)
 function addRoll(ch: TDOMNode; sx, sy, format: integer; lastFrameIdx: integer; var animation: TBuffer): integer;
 function addShift(ch: TDOMNode; sx, sy, format: integer; lastFrameIdx: integer; var animation: TBuffer): integer;
 function addText(ch: TDOMNode; sx, sy, format: integer; lastFrameIdx: integer; var animation: TBuffer): integer;
+function addPause(ch: TDOMNode; lastFrameIdx: integer; var animation: TBuffer): integer;
 function bytesPerPixel(format: integer): integer;
 
-const progamVersion = '0.2.0';
+const progamVersion = '0.3.0';
 
 const charsPerColor = 12;
 const version = 1;
@@ -603,6 +604,20 @@ begin
   end;
 end;
 
+function addPause(ch: TDOMNode; lastFrameIdx: integer; var animation: TBuffer): integer;
+var
+  duration, previousDuration, previousType: integer;
+begin
+  result := lastFrameIdx;
+  duration := DomstrToInt(ch.Attributes.GetNamedItem('duration').NodeValue);
+  previousType := getUint8(lastFrameIdx, animation);
+  if (previousType = dataFrame) then begin
+    previousDuration := getUint16(lastFrameIdx + 1, animation);
+    duration := duration + previousDuration;
+    setUint16(lastFrameIdx + 1, duration, animation);
+  end;
+end;
+
 function render(rn: TDOMNode): TBuffer;
 var
  animation: TBuffer;
@@ -635,6 +650,8 @@ begin
       lastFrameIdx := addShift(ch, sx, sy, format, lastFrameIdx, animation);
     end else if (ch.NodeName = 'text') then begin
       lastFrameIdx := addText(ch, sx, sy, format, lastFrameIdx, animation);
+    end else if (ch.NodeName = 'pause') then begin
+      lastFrameIdx := addPause(ch, lastFrameIdx, animation);
     end;
     ch := ch.NextSibling;
   end;

@@ -217,6 +217,15 @@ object Form1: TForm1
       Width = 1
       Anchors = [akLeft, akBottom]
     end
+    object Button14: TButton
+      Left = 92
+      Height = 25
+      Top = 40
+      Width = 75
+      Caption = 'Pause'
+      TabOrder = 9
+      OnClick = Button14Click
+    end
   end
   object Image1: TImage
     Left = 288
