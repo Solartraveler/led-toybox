@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <storybook Xsize="5" Ysize="5" fileformat="1" colorFormat="2">
-  <text font="2" color1="FFFF00000000" color2="000000000000" comment="USB" repeats="10" duration="250"/>
+  <text font="2" color1="FFFF00000000" color2="000000000000" comment=" USB" repeats="14" duration="250"/>
+  <pause comment="" duration="1000"/>
 </storybook>
