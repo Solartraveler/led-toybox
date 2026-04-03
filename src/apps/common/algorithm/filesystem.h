@@ -7,8 +7,13 @@
 
 extern FATFS g_fatfs;
 
-//assumes the filesystem is not mounted. Returns true if successful
-bool FilesystemMount(void);
+/*Assumes the filesystem is not mounted.
+  Returns 0 if successful.
+          1 if reading from flash device failed
+          2 if there is no filesystem
+          3 if there are other errors, preventing a mount
+*/
+uint8_t FilesystemMount(void);
 
 bool FilesystemReadFile(const char * filename, void * data, size_t bufferLen, size_t * pReadLen);
 

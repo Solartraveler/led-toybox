@@ -20,21 +20,21 @@ SPDX-License-Identifier: BSD-3-Clause
 
 FATFS g_fatfs;
 
-bool FilesystemMount(void) {
+uint8_t FilesystemMount(void) {
 	if (FlashReady() != true) {
 		printf("Error, no valid answer from flash\r\n");
-		return false;
+		return 1;
 	}
 	FRESULT fres;
 	fres = f_mount(&g_fatfs, "0", 1);
 	if (fres == FR_OK) {
-		return true;
+		return 0;
 	} else if (fres == FR_NO_FILESYSTEM) {
 		printf("Warning, no filesystem\r\n");
-		return false;
+		return 2;
 	} else {
 		printf("Error, mounting returned %u\r\n", (unsigned int)fres);
-		return false;
+		return 3;
 	}
 }
 
