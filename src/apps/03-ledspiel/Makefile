@@ -17,7 +17,7 @@
 #Name of this application
 NAME     = LedSpiel
 #Version of this application, to be used in the metadata
-VERSION  = 0.2.0
+VERSION  = 0.3.0
 #Author of this application, to be used in the metadata
 AUTHOR   = Malte Marwedel
 #Use the spdx notation here, to be used in the metadata
@@ -29,7 +29,7 @@ VARIANT ?= RGTx
 #Hardware, if there are platforms with the same chip, but different layout, some hardware variable might make the difference
 BOARD   ?= LedSpielV1
 #Watchdog in [ms]. 0 disables, maximum is 65535
-WATCHDOG = 20000
+WATCHDOG = 10000
 
 #If the name is not readme.md, --transform needs to be used to adjust the name
 TARREADME = readme.md

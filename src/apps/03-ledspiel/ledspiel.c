@@ -1,11 +1,19 @@
 /* LedSpiel
-(c) 2025 by Malte Marwedel
-
-Incomplete. Currently just allows reading the SD card over as MSC on the USB
-port. And this is very slow. Writing does not work.
-
+(c) 2025 - 2026 by Malte Marwedel
 
 SPDX-License-Identifier: GPL-3.0-or-later
+
+Status:
+USB: Partially working: Currently just allows reading the SD card over as MSC on the USB
+  port. And this is very slow. Writing does not work.
+Playing mp3: Working
+Driving LED matrix: Working
+Reading brightness: Not working
+Reading infrared keys: Not working
+Playing animations: Not working
+Reading keys: Not working
+Charging: Not working
+
 */
 
 #include <ctype.h>
@@ -30,13 +38,17 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "ledspiellib/watchdog.h"
 
 #include "audioOut.h"
+#include "charging.h"
+#include "errorSdCard.h"
 #include "filesystem.h"
 #include "keyInput.h"
-
 #include "main.h"
 #include "mp3Playback.h"
+#include "noFiles.h"
+#include "noSdCard.h"
 #include "sdmmcAccess.h"
 #include "usbMsc.h"
+#include "usbConnected.h"
 #include "utility.h"
 #include "json.h"
 
@@ -46,6 +58,14 @@ typedef struct {
 	float volume;
 	uint16_t brightness;
 	uint8_t frameTest;
+	uint8_t filesystem; //0 = mounted, card working
+	bool animation; //if true, the animation is running
+	bool animationRepeat;
+	uint32_t animationWait; //timestamp in [ms] until the next frame should be read
+	size_t animationLen; //length of animationData
+	size_t animationRptr; //read pointer of animationData
+	const uint8_t * animationDataRam;
+	uint8_t animationBytesPerPixel;
 
 } ledspielState_t;
 
@@ -168,44 +188,7 @@ void FrameTest(uint8_t id) {
 	}
 }
 
-void AppInit(void) {
-	LedsInit();
-	Led1Yellow();
-	/* 48MHz: USB does not work reliable with 32MHz, so this is the minimum.
-	   There are power of two scalers for the SD card, which supports 25MHz,
-	   so 24MHz can be used. Also mp3 needs around 40MHz, so 48MHz is propably the best
-	   to be used.
-	   It turns out, while mp3 plays with 48MHz, the DMA transfer from the SD card
-	   gets data errors as soon as the DMA is used for the LED matrix too.
-	*/
-	uint8_t clockError = McuClockToHsePll(F_CPU, RCC_HCLK_DIV1);
-	Rs232Init();
-	printf("\r\nLedSpiel %s\r\n", APPVERSION);
-	if (clockError) {
-		printf("Error, setting up PLL - %u\r\n", clockError);
-	}
-	StackSampleInit();
-	/*It looks like, if higher CPU frequencies are used, the divider needs to be
-	  at least 4. Selecting a higher APB divider does not help.
-	  A divider of 2 for the SPI works with 96MHz, but with 144MHz,
-	  reading works and writing fails with the tested SD card.
-	  At  168MHz (APB2Div = 4, SPI div = 2 -> 21MHz) reading fails too.
-	  But 168MHz (APB2Div = 2, SPI div = 4 -> 21MHz) works.
-	*/
-#if (F_CPU > 50000000)
-	FlashEnable(4);
-#else
-	FlashEnable(2);
-#endif
-	SdmmcCrcMode(SDMMC_CRC_WRITE);
-	FilesystemMount();
-	g_ledspielState.usbEnabled = false;
-	Led1Green();
-	g_ledspielState.volume = 1.0;
-	g_ledspielState.brightness = 255;
-	printf("Ready. Press h for available commands\r\n");
-	StackSampleCheck();
-}
+
 
 static void PrepareOtherProgam(void) {
 	Led2Off();
@@ -362,6 +345,9 @@ void PlaySelectFilename(uint32_t dirnum, uint32_t filenum, char * filename, size
 }
 
 void PlayContinue(void) {
+	if (g_ledspielState.filesystem != 0) {
+		return;
+	}
 	if (g_ledspielState.playing == false) {
 		char filename[128];
 		PlaySelectFilename(1, 0, filename, sizeof(filename));
@@ -411,9 +397,138 @@ void BrightnessDown(void) {
 	printf("Brightness: %u\r\n", (unsigned int)g_ledspielState.brightness);
 }
 
-void LedFrameTest(void) {
+void MatrixFrameTest(void) {
 	g_ledspielState.frameTest = (g_ledspielState.frameTest + 1) % 6;
 	FrameTest(g_ledspielState.frameTest);
+}
+
+const uint8_t * MatrixAnimationDataGet(size_t len) {
+	if (g_ledspielState.animationDataRam) {
+		if ((g_ledspielState.animationRptr) + len <= g_ledspielState.animationLen) {
+			const uint8_t * rptr = g_ledspielState.animationDataRam + g_ledspielState.animationRptr;
+			g_ledspielState.animationRptr += len;
+			return rptr;
+		}
+	}
+	return NULL;
+}
+
+void MatrixAnimationServe(void) {
+	if (g_ledspielState.frameTest) {
+		return;
+	}
+	if (HAL_GetTick() < g_ledspielState.animationWait) {
+		return;
+	}
+	size_t frameSize = g_ledspielState.animationBytesPerPixel * MATRIX_X * MATRIX_Y + 3;
+	const uint8_t * pFrame = MatrixAnimationDataGet(frameSize);
+	if ((!pFrame) || (pFrame[0] != 2)) {
+		if (g_ledspielState.animationRepeat) {
+			g_ledspielState.animationRptr = 12;
+		}
+		return;
+	}
+	uint16_t delay = (pFrame[1] << 8) | pFrame[2];
+	g_ledspielState.animationWait += delay;
+	MatrixFrame(g_ledspielState.animationBytesPerPixel, pFrame + 3);
+}
+
+bool MatrixAnimationStart(void) {
+	const uint8_t * pFrameHeader = MatrixAnimationDataGet(12);
+	if (!pFrameHeader) {
+		return false;
+	}
+	if (pFrameHeader[0] != 1) { //no meta information
+		return false;
+	}
+	if (pFrameHeader[5] != 1) { //unsupported format version
+		return false;
+	}
+	uint16_t bitsPerColor = pFrameHeader[6];
+	if ((bitsPerColor < 2) || (bitsPerColor > 16)) {
+		return false;
+	}
+	uint16_t sx = (pFrameHeader[7] << 8) | pFrameHeader[8];
+	uint16_t sy = (pFrameHeader[9] << 8) | pFrameHeader[10];
+	if ((sx != MATRIX_X) || (sy != MATRIX_Y)) {
+		return false;
+	}
+	if (!MatrixInit((1 << bitsPerColor) - 1)) {
+		return false;
+	}
+	g_ledspielState.animationBytesPerPixel = 1;
+	if (bitsPerColor > 2) {
+		g_ledspielState.animationBytesPerPixel = 2;
+	}
+	if (bitsPerColor > 5) {
+		g_ledspielState.animationBytesPerPixel = 3;
+	}
+	if (bitsPerColor > 8) {
+		g_ledspielState.animationBytesPerPixel = 6;
+	}
+	g_ledspielState.animation = true;
+	MatrixAnimationServe();
+	return true;
+}
+
+void MatrixAnimationStartRam(const uint8_t * pData, size_t len, bool repeat) {
+	printf("Starting buildin animation\r\n");
+	g_ledspielState.animationWait = HAL_GetTick();
+	g_ledspielState.animationLen = len;
+	g_ledspielState.animationDataRam = pData;
+	g_ledspielState.animationRptr = 0;
+	g_ledspielState.animationRepeat = true;
+	if (!MatrixAnimationStart()) {
+		printf("...failed\r\n");
+	}
+}
+
+void AppInit(void) {
+	LedsInit();
+	Led1Yellow();
+	/* 48MHz: USB does not work reliable with 32MHz, so this is the minimum.
+	   There are power of two scalers for the SD card, which supports 25MHz,
+	   so 24MHz can be used. Also mp3 needs around 40MHz, so 48MHz is propably the best
+	   to be used.
+	   It turns out, while mp3 plays with 48MHz, the DMA transfer from the SD card
+	   gets data errors as soon as the DMA is used for the LED matrix too.
+	*/
+	uint8_t clockError = McuClockToHsePll(F_CPU, RCC_HCLK_DIV1);
+	Rs232Init();
+	printf("\r\nLedSpiel %s\r\n", APPVERSION);
+	if (clockError) {
+		printf("Error, setting up PLL - %u\r\n", clockError);
+	}
+	StackSampleInit();
+	/*It looks like, if higher CPU frequencies are used, the divider needs to be
+	  at least 4. Selecting a higher APB divider does not help.
+	  A divider of 2 for the SPI works with 96MHz, but with 144MHz,
+	  reading works and writing fails with the tested SD card.
+	  At  168MHz (APB2Div = 4, SPI div = 2 -> 21MHz) reading fails too.
+	  But 168MHz (APB2Div = 2, SPI div = 4 -> 21MHz) works.
+	*/
+#if (F_CPU > 50000000)
+	FlashEnable(4);
+#else
+	FlashEnable(2);
+#endif
+	if (FlashReady()) {
+		SdmmcCrcMode(SDMMC_CRC_WRITE);
+		g_ledspielState.filesystem = FilesystemMount();
+		g_ledspielState.usbEnabled = false;
+		Led1Green();
+	} else {
+		g_ledspielState.filesystem = 1;
+	}
+	g_ledspielState.volume = 1.0;
+	g_ledspielState.brightness = 255;
+	printf("Ready. Press h for available commands\r\n");
+	StackSampleCheck();
+	if (g_ledspielState.filesystem == 1) {
+		MatrixAnimationStartRam(build_noSdCard_ani, build_noSdCard_ani_len, true);
+	} else if (g_ledspielState.filesystem > 1) {
+		MatrixAnimationStartRam(build_errorSdCard_ani, build_errorSdCard_ani_len, true);
+	}
 }
 
 void AppCycle(void) {
@@ -433,7 +548,7 @@ void AppCycle(void) {
 		case '-': VolumeDown(); break;
 		case 'y': BrightnessUp(); break;
 		case 'x': BrightnessDown(); break;
-		case 'c': LedFrameTest(); break;
+		case 'c': MatrixFrameTest(); break;
 			if (g_ledspielState.usbEnabled) {
 				StorageCycle(input);
 			}
@@ -441,11 +556,15 @@ void AppCycle(void) {
 		default: break;
 	}
 	if (g_ledspielState.usbEnabled) {
+		if (g_ledspielState.animation == false) {
+			MatrixAnimationStartRam(build_usbConnected_ani, build_usbConnected_ani_len, true);
+		}
 		StorageCycle(0);
 	} else {
 		PlayContinue();
 	}
 	WatchdogServe();
+	MatrixAnimationServe();
 	StackSampleCheck();
 }
 
