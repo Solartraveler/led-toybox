@@ -17,7 +17,7 @@
 #Name of this application
 NAME     = LedSpiel
 #Version of this application, to be used in the metadata
-VERSION  = 0.2.0
+VERSION  = 0.3.0
 #Author of this application, to be used in the metadata
 AUTHOR   = Malte Marwedel
 #Use the spdx notation here, to be used in the metadata
@@ -29,10 +29,11 @@ VARIANT ?= RGTx
 #Hardware, if there are platforms with the same chip, but different layout, some hardware variable might make the difference
 BOARD   ?= LedSpielV1
 #Watchdog in [ms]. 0 disables, maximum is 65535
-WATCHDOG = 20000
+WATCHDOG = 10000
 
-#If the name is not readme.md, --transform needs to be used to adjust the name
-TARREADME = readme.md
+#If the name is not readme.md, --transform needs to be used to adjust the name.
+#Or leave empty to save some memory.
+TARREADME =
 
 TARGET = $(NAME)-$(CHIP)
 TARGETRAM = $(TARGET)-ram
@@ -114,6 +115,7 @@ C_SOURCES += $(STM_HAL)/Src/$(CHIPFAMILY)_hal_tim.c
 C_SOURCES += $(STM_HAL)/Src/$(CHIPFAMILY)_hal_tim_ex.c
 C_SOURCES += $(LEDSPIELLIB)/boxusb.c
 C_SOURCES += $(LEDSPIELLIB)/flash.c
+C_SOURCES += $(LEDSPIELLIB)/keyInput.c
 C_SOURCES += $(LEDSPIELLIB)/ledMatrix.c
 C_SOURCES += $(LEDSPIELLIB)/leds.c
 C_SOURCES += $(LEDSPIELLIB)/mcu.c
@@ -147,12 +149,11 @@ C_SOURCES += $(LIBMAD)/stream.c
 C_SOURCES += $(LIBMAD)/synth.c
 C_SOURCES += $(LIBMAD)/timer.c
 C_SOURCES += $(LIBMAD)/version.c
+C_SOURCES += animationPlayback.c
 C_SOURCES += ledspiel.c
 C_SOURCES += mp3Playback.c
 C_SOURCES += usbMsc.c
 C_SOURCES += arm/audioOut.c
-C_SOURCES += arm/keyInput.c
-
 
 # ASM sources
 ASM_SOURCES = $(SHARED_INIT)/startup_$(CHIP).s

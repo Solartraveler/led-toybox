@@ -151,6 +151,9 @@ TODO:
 
 #include "utility.h"
 
+//If enabled, read and writes are signalled by LEDs
+//#define MSC_SIGNAL_LED
+
 //Maybe there is a larger block size defined in main.h. Eg 4096.
 #ifndef DISK_BLOCKSIZE
 #define DISK_BLOCKSIZE 512
@@ -388,11 +391,13 @@ performanceState_t g_performanceState;
 
 
 void UsbIrqOnEnter(void) {
+#ifdef MSC_SIGNAL_LED
+	Led1Off();
+#endif
 	g_performanceState.tickUsbIsrStart = McuTimestampUs();
 }
 
 void UsbIrqOnLeave(void) {
-	Led1Off();
 	g_storageState.usbTraffic = 2;
 	uint64_t tNow = McuTimestampUs();
 	g_performanceState.ticksUsbIsr += tNow - g_performanceState.tickUsbIsrStart;
@@ -730,7 +735,9 @@ void EndpointBulkOut(usbd_device *dev, uint8_t event, uint8_t ep) {
 				}
 				StorageQueueCsw(dev, cbw->tag, status);
 			} else if ((command == 0x28) && (cbw->length >= 10)) { //read(10) data
+#ifdef MSC_SIGNAL_LED
 				Led2Green();
+#endif
 				uint32_t block;
 				uint32_t num;
 				memcpy(&block, &(cbw->data[2]), sizeof(uint32_t));
@@ -742,7 +749,9 @@ void EndpointBulkOut(usbd_device *dev, uint8_t event, uint8_t ep) {
 				g_storageState.readBlockNum = num;
 				g_storageState.tag = cbw->tag; //no response yet
 			} else if ((command == 0x2A) && (cbw->length >= 10)) { //write(10) data
+#ifdef MSC_SIGNAL_LED
 				Led2Red();
+#endif
 				uint32_t block;
 				uint32_t num;
 				memcpy(&block, &(cbw->data[2]), sizeof(uint32_t));
@@ -1242,7 +1251,9 @@ bool ProcessFlashAccess(void) {
 				break;
 			}
 		}
+#ifdef MSC_SIGNAL_LED
 		Led2Off();
+#endif
 		if (!QueueCswToHostWithTimeout(&g_usbDev, g_storageState.tag, status)) {
 			printf("Error, could not queue CSW\r\n");
 		}
@@ -1336,7 +1347,9 @@ bool StorageCycle(char input) {
 		if (g_storageState.usbTraffic) {
 			g_storageState.usbTraffic--;
 		} else {
+#ifdef MSC_SIGNAL_LED
 			Led1Green(); //no ISR for ~2 cycles
+#endif
 		}
 		UsbUnlock();
 	}

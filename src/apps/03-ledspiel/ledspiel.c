@@ -1,11 +1,19 @@
 /* LedSpiel
-(c) 2025 by Malte Marwedel
-
-Incomplete. Currently just allows reading the SD card over as MSC on the USB
-port. And this is very slow. Writing does not work.
-
+(c) 2025 - 2026 by Malte Marwedel
 
 SPDX-License-Identifier: GPL-3.0-or-later
+
+Status:
+USB: Partially working: Currently just allows reading the SD card over as MSC on the USB
+  port. And this is very slow. Writing does not work.
+Playing mp3: Working
+Driving LED matrix: Working
+Reading brightness: Not working
+Reading infrared keys: Not working
+Playing animations: Working
+Reading keys: Not tested
+Charging: Not working
+
 */
 
 #include <ctype.h>
@@ -22,6 +30,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "ledspiellib/boxusb.h"
 #include "ledspiellib/flash.h"
+#include "ledspiellib/keyInput.h"
 #include "ledspiellib/ledMatrix.h"
 #include "ledspiellib/leds.h"
 #include "ledspiellib/mcu.h"
@@ -29,24 +38,41 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include "ledspiellib/stackSampler.h"
 #include "ledspiellib/watchdog.h"
 
+#include "animationPlayback.h"
 #include "audioOut.h"
+#include "charging.h"
+#include "errorSdCard.h"
 #include "filesystem.h"
-#include "keyInput.h"
-
 #include "main.h"
 #include "mp3Playback.h"
+#include "noFiles.h"
+#include "noSdCard.h"
 #include "sdmmcAccess.h"
 #include "usbMsc.h"
+#include "usbConnected.h"
 #include "utility.h"
 #include "json.h"
+
+/*If selected 0, the folder selection + FOLDER_OFFSET will be opened
+  so the first folder has to be named 01, not 00.
+*/
+#define FOLDER_OFFSET 1
 
 typedef struct {
 	bool usbEnabled;
 	bool playing;
+	bool animation;
 	float volume;
 	uint16_t brightness;
 	uint8_t frameTest;
-
+	uint8_t filesystem; //0 = mounted, card working
+	uint32_t inputPrevious;
+	uint32_t folderNum;
+	uint16_t animationFileNum;
+	uint16_t playbackFileNum;
+	bool animationNext;
+	bool playbackNext;
+	bool folderUpdated;
 } ledspielState_t;
 
 ledspielState_t g_ledspielState;
@@ -54,20 +80,23 @@ ledspielState_t g_ledspielState;
 
 void MainMenu(void) {
 	printf("\r\nSelect operation:\r\n");
-	printf("h: This screen\r\n");
-	printf("r: Reboot with reset controller\r\n");
+	printf("0..9, A...F: Select folder 1...16\r\n");
+	printf("a: Audio test\r\n");
 	printf("b: Jump to ST DFU bootloader\r\n");
+	printf("c: LED frame test\r\n");
+	printf("h: This screen\r\n");
+	printf("l: List files\r\n");
+	printf("m: Next mp3\r\n");
+	printf("n: Next animation\r\n");
+	printf("p: Toggle print USB performance\r\n");
+	printf("r: Reboot with reset controller\r\n");
 	printf("t: Measure storage performance\r\n");
 	printf("u: Toggle USB device\r\n");
 	printf("w: Toggle USB write protection\r\n");
-	printf("p: Toggle print USB performance\r\n");
-	printf("l: List files\r\n");
-	printf("a: Audio test\r\n");
+	printf("x: Decrease brightness\r\n");
+	printf("y: Increase brightness\r\n");
 	printf("+: Playback volume increment\r\n");
 	printf("-: Playback volume decrement\r\n");
-	printf("y: Increase brightness\r\n");
-	printf("x: Decrease brightness\r\n");
-	printf("c: LED frame test\r\n");
 }
 
 #define FLIPBYTESU16(X) ((((X) >> 8) & 0xFF) | (((X) << 8) & 0xFF00))
@@ -168,44 +197,7 @@ void FrameTest(uint8_t id) {
 	}
 }
 
-void AppInit(void) {
-	LedsInit();
-	Led1Yellow();
-	/* 48MHz: USB does not work reliable with 32MHz, so this is the minimum.
-	   There are power of two scalers for the SD card, which supports 25MHz,
-	   so 24MHz can be used. Also mp3 needs around 40MHz, so 48MHz is propably the best
-	   to be used.
-	   It turns out, while mp3 plays with 48MHz, the DMA transfer from the SD card
-	   gets data errors as soon as the DMA is used for the LED matrix too.
-	*/
-	uint8_t clockError = McuClockToHsePll(F_CPU, RCC_HCLK_DIV1);
-	Rs232Init();
-	printf("\r\nLedSpiel %s\r\n", APPVERSION);
-	if (clockError) {
-		printf("Error, setting up PLL - %u\r\n", clockError);
-	}
-	StackSampleInit();
-	/*It looks like, if higher CPU frequencies are used, the divider needs to be
-	  at least 4. Selecting a higher APB divider does not help.
-	  A divider of 2 for the SPI works with 96MHz, but with 144MHz,
-	  reading works and writing fails with the tested SD card.
-	  At  168MHz (APB2Div = 4, SPI div = 2 -> 21MHz) reading fails too.
-	  But 168MHz (APB2Div = 2, SPI div = 4 -> 21MHz) works.
-	*/
-#if (F_CPU > 50000000)
-	FlashEnable(4);
-#else
-	FlashEnable(2);
-#endif
-	SdmmcCrcMode(SDMMC_CRC_WRITE);
-	FilesystemMount();
-	g_ledspielState.usbEnabled = false;
-	Led1Green();
-	g_ledspielState.volume = 1.0;
-	g_ledspielState.brightness = 255;
-	printf("Ready. Press h for available commands\r\n");
-	StackSampleCheck();
-}
+
 
 static void PrepareOtherProgam(void) {
 	Led2Off();
@@ -334,19 +326,21 @@ void ListFiles(const char * directory, const char * prefix, uint32_t recursive) 
 	}
 }
 
-void PlaySelectFilename(uint32_t dirnum, uint32_t filenum, char * filename, size_t len) {
+bool PlaySelectFilename(uint32_t dirnum, uint32_t filenum, const char * fileEnding, char * filename, size_t len) {
 	DIR d;
 	FILINFO fi;
 	char dirname[16];
+	bool found = false;
 	snprintf(dirname, sizeof(dirname), "/%02u", (unsigned int)dirnum);
 	if (f_opendir(&d, dirname) == FR_OK) {
-		printf("Opened %s\r\n", dirname);
+		//printf("Opened %s\r\n", dirname);
 		while (f_readdir(&d, &fi) == FR_OK) {
 			if (fi.fname[0]) {
-				printf("%s\r\n", fi.fname);
-				if ((EndsWith(fi.fname, ".mp3")) && (fi.fattrib & AM_DIR) == 0) {
+				//printf("%s\r\n", fi.fname);
+				if ((EndsWith(fi.fname, fileEnding)) && (fi.fattrib & AM_DIR) == 0) {
 					if (filenum == 0) {
 						snprintf(filename, len, "%s/%s", dirname, fi.fname);
+						found = true;
 						break;
 					}
 					filenum--;
@@ -359,17 +353,30 @@ void PlaySelectFilename(uint32_t dirnum, uint32_t filenum, char * filename, size
 	} else {
 		printf("Failed to open %s\r\n", dirname);
 	}
+	return found;
 }
 
-void PlayContinue(void) {
-	if (g_ledspielState.playing == false) {
-		char filename[128];
-		PlaySelectFilename(1, 0, filename, sizeof(filename));
-		printf("Selected %s\r\n", filename);
-		g_ledspielState.playing = true;
-		PlaybackStart(filename, g_ledspielState.volume);
+uint32_t PlayCountFiles(uint32_t dirnum, const char * fileEnding) {
+	DIR d;
+	FILINFO fi;
+	char dirname[16];
+	uint32_t num = 0;
+	snprintf(dirname, sizeof(dirname), "/%02u", (unsigned int)dirnum);
+	if (f_opendir(&d, dirname) == FR_OK) {
+		while (f_readdir(&d, &fi) == FR_OK) {
+			if (fi.fname[0]) {
+				if ((EndsWith(fi.fname, fileEnding)) && (fi.fattrib & AM_DIR) == 0) {
+					num++;
+				}
+			} else {
+				break;
+			}
+		}
+		f_closedir(&d);
+	} else {
+		printf("Failed to open %s\r\n", dirname);
 	}
-	PlaybackProcess();
+	return num;
 }
 
 static void VolumeSet(void) {
@@ -411,12 +418,146 @@ void BrightnessDown(void) {
 	printf("Brightness: %u\r\n", (unsigned int)g_ledspielState.brightness);
 }
 
-void LedFrameTest(void) {
+void MatrixFrameTest(void) {
 	g_ledspielState.frameTest = (g_ledspielState.frameTest + 1) % 6;
 	FrameTest(g_ledspielState.frameTest);
 }
 
+void PlayContinue(void) {
+	if (g_ledspielState.filesystem != 0) {
+		return;
+	}
+	if (g_ledspielState.folderUpdated) {
+		g_ledspielState.folderUpdated = false;
+		g_ledspielState.animationFileNum = 0;
+		g_ledspielState.playbackFileNum = 0;
+		PlaybackStop();
+		g_ledspielState.playing = false;
+		AnimationStop();
+		g_ledspielState.animation = false;
+	}
+	if (g_ledspielState.playbackNext) {
+		g_ledspielState.playbackNext = false;
+		PlaybackStop();
+		g_ledspielState.playing = false;
+		g_ledspielState.playbackFileNum++;
+		uint32_t num = PlayCountFiles(g_ledspielState.folderNum + FOLDER_OFFSET, ".mp3");
+		if (g_ledspielState.playbackFileNum >= num) {
+			g_ledspielState.playbackFileNum = 0;
+		}
+	}
+	if (g_ledspielState.animationNext) {
+		g_ledspielState.animationNext = false;
+		AnimationStop();
+		g_ledspielState.animation = false;
+		g_ledspielState.animationFileNum++;
+		uint32_t num = PlayCountFiles(g_ledspielState.folderNum + FOLDER_OFFSET, ".ani");
+		if (g_ledspielState.animationFileNum >= num) {
+			g_ledspielState.animationFileNum = 0;
+		}
+		//printf("Animation: %u of %u\r\n", (unsigned int)g_ledspielState.animationFileNum, (unsigned int)num);
+	}
+	if (g_ledspielState.playing == false) {
+		char filename[128];
+		if (PlaySelectFilename(g_ledspielState.folderNum + FOLDER_OFFSET, g_ledspielState.playbackFileNum, ".mp3", filename, sizeof(filename))) {
+			printf("Selected %s\r\n", filename);
+			g_ledspielState.playing = true;
+			PlaybackStart(filename, g_ledspielState.volume);
+		}
+	}
+	if (PlaybackProcess() == false) {
+		g_ledspielState.playbackNext = true;
+	}
+	if (g_ledspielState.animation == false) {
+		char filename[128];
+		if (PlaySelectFilename(g_ledspielState.folderNum + FOLDER_OFFSET, g_ledspielState.animationFileNum, ".ani", filename, sizeof(filename))) {
+			printf("Selected %s\r\n", filename);
+			g_ledspielState.animation = true;
+			AnimationStartFile(filename, true);
+		}
+	}
+	//AnimationProcess() is done in the main loop, as this needs to be done even without an SD card
+}
+
+void AppInit(void) {
+	LedsInit();
+	Led1Yellow();
+	/* 48MHz: USB does not work reliable with 32MHz, so this is the minimum.
+	   There are power of two scalers for the SD card, which supports 25MHz,
+	   so 24MHz can be used. Also mp3 needs around 40MHz, so 48MHz is propably the best
+	   to be used.
+	*/
+	uint8_t clockError = McuClockToHsePll(F_CPU, RCC_HCLK_DIV1);
+	Rs232Init();
+	printf("\r\nLedSpiel %s\r\n", APPVERSION);
+	if (clockError) {
+		printf("Error, setting up PLL - %u\r\n", clockError);
+	}
+	KeyInputInit();
+	StackSampleInit();
+	/*It looks like, if higher CPU frequencies are used, the divider needs to be
+	  at least 4. Selecting a higher APB divider does not help.
+	  A divider of 2 for the SPI works with 96MHz, but with 144MHz,
+	  reading works and writing fails with the tested SD card.
+	  At  168MHz (APB2Div = 4, SPI div = 2 -> 21MHz) reading fails too.
+	  But 168MHz (APB2Div = 2, SPI div = 4 -> 21MHz) works.
+	*/
+#if (F_CPU > 50000000)
+	FlashEnable(4);
+#else
+	FlashEnable(2);
+#endif
+	if (FlashReady()) {
+		SdmmcCrcMode(SDMMC_CRC_WRITE);
+		g_ledspielState.filesystem = FilesystemMount();
+		g_ledspielState.usbEnabled = false;
+		Led1Green();
+	} else {
+		g_ledspielState.filesystem = 1;
+	}
+	g_ledspielState.volume = 1.0;
+	g_ledspielState.brightness = 255;
+	printf("Ready. Press h for available commands\r\n");
+	StackSampleCheck();
+	if (g_ledspielState.filesystem == 1) {
+		AnimationStartRam(build_noSdCard_ani, build_noSdCard_ani_len, true);
+	} else if (g_ledspielState.filesystem > 1) {
+		AnimationStartRam(build_errorSdCard_ani, build_errorSdCard_ani_len, true);
+	}
+}
+
+//static state keys
+#define INPUT_FOLDER 0x1E
+//push button
+#define INPUT_ANIMATION 0x20
+//push button
+#define INPUT_MUSIC 0x20
+
+uint8_t dummy[1024];
+
 void AppCycle(void) {
+	/*Intended bit meaning
+	  0: unused
+	  1...4: Folder selection
+	  5: Next animation
+	  6: Next music
+	*/
+	dummy[1] = dummy[0];
+	uint32_t keyInput = KeyInputGet();
+	if (keyInput != g_ledspielState.inputPrevious) {
+		if ((keyInput & INPUT_FOLDER) != (g_ledspielState.inputPrevious & INPUT_FOLDER)) {
+			g_ledspielState.folderNum = (keyInput & INPUT_FOLDER) >> 1;
+			g_ledspielState.folderUpdated = true;
+		}
+		if (keyInput & INPUT_ANIMATION) {
+			g_ledspielState.animationNext = true;
+		}
+		if (keyInput & INPUT_MUSIC) {
+			g_ledspielState.playbackNext = true;
+		}
+		g_ledspielState.inputPrevious = keyInput;
+	}
+
 	char input = Rs232GetChar();
 	if (input) {
 		printf("%c", input);
@@ -433,19 +574,37 @@ void AppCycle(void) {
 		case '-': VolumeDown(); break;
 		case 'y': BrightnessUp(); break;
 		case 'x': BrightnessDown(); break;
-		case 'c': LedFrameTest(); break;
-			if (g_ledspielState.usbEnabled) {
-				StorageCycle(input);
-			}
-			break;
+		case 'c': MatrixFrameTest(); break;
+		case '0' ... '9':
+		  g_ledspielState.folderNum = input - '0';
+		  g_ledspielState.folderUpdated = true;
+		  break;
+		case 'A' ... 'F':
+		  g_ledspielState.folderNum = input - 'A';
+		  g_ledspielState.folderUpdated = true;
+		  break;
+		case 'm': g_ledspielState.playbackNext = true; break;
+		case 'n': g_ledspielState.animationNext = true; break;
 		default: break;
+		if (g_ledspielState.usbEnabled) {
+			StorageCycle(input);
+		}
+		break;
 	}
 	if (g_ledspielState.usbEnabled) {
+		if (g_ledspielState.animation == false) {
+			AnimationStartRam(build_usbConnected_ani, build_usbConnected_ani_len, true);
+		}
 		StorageCycle(0);
 	} else {
 		PlayContinue();
 	}
 	WatchdogServe();
+	if (g_ledspielState.frameTest == 0) {
+		if (AnimationProcess() == false) {
+			g_ledspielState.animationNext = true;
+		}
+	}
 	StackSampleCheck();
 }
 

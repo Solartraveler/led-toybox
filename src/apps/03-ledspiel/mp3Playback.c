@@ -1,3 +1,9 @@
+/* LedSpiel
+(c) 2026 by Malte Marwedel
+
+SPDX-License-Identifier: GPL-3.0-or-later
+*/
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
