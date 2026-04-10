@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<storybook Xsize="5" Ysize="5" fileformat="1" colorFormat="8">
+  <frame comment="" duration="100">
+    <line>0000FFFF0000000000000000000000000000000000000000000000000000</line>
+  </frame>
+  <roll x="1" y="0.2" comment="" repeats="24" duration="100"/>
+  <frame comment="" duration="100">
+    <line>00000000FFFF000000000000000000000000000000000000000000000000</line>
+  </frame>
+  <roll x="1" y="0.2" comment="" repeats="24" duration="100"/>
+  <frame comment="" duration="100">
+    <line>FFFF00000000000000000000000000000000000000000000000000000000</line>
+  </frame>
+  <roll x="1" y="0.2" comment="" repeats="24" duration="100"/>
+</storybook>
