@@ -26,6 +26,8 @@ type
     Button12: TButton;
     Button13: TButton;
     Button14: TButton;
+    Button15: TButton;
+    Button16: TButton;
     Button2: TButton;
     Button3: TButton;
     Button4: TButton;
@@ -39,6 +41,7 @@ type
     ColorDialog2: TColorDialog;
     FloatSpinEdit1: TFloatSpinEdit;
     FloatSpinEdit2: TFloatSpinEdit;
+    FloatSpinEdit3: TFloatSpinEdit;
     GroupBox1: TGroupBox;
     GroupBox2: TGroupBox;
     GroupBox3: TGroupBox;
@@ -51,6 +54,7 @@ type
     Label14: TLabel;
     Label15: TLabel;
     Label16: TLabel;
+    Label17: TLabel;
     Label2: TLabel;
     Label3: TLabel;
     Label4: TLabel;
@@ -86,6 +90,8 @@ type
     procedure Button12Click(Sender: TObject);
     procedure Button13Click(Sender: TObject);
     procedure Button14Click(Sender: TObject);
+    procedure Button15Click(Sender: TObject);
+    procedure Button16Click(Sender: TObject);
     procedure Button1Click(Sender: TObject);
     procedure Button2Click(Sender: TObject);
     procedure Button3Click(Sender: TObject);
@@ -98,6 +104,7 @@ type
     procedure CheckBox1Change(Sender: TObject);
     procedure FloatSpinEdit1Change(Sender: TObject);
     procedure FloatSpinEdit2Change(Sender: TObject);
+    procedure FloatSpinEdit3Change(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     function ColorStr(r, g, b: integer): String;
     function Color1Str(): String;
@@ -306,6 +313,7 @@ begin
       floatspinedit2.Enabled := false;
       spinedit4.Enabled := false;
       spinedit12.Enabled := false;
+      floatspinedit3.Enabled := false;
       memo1.text := String(ascene.Attributes.GetNamedItem('comment').NodeValue);
       if (ascene.NodeName = 'frame') then begin
         spinedit3.enabled := true;
@@ -349,6 +357,14 @@ begin
         spinedit10.Value := pixel.g;
         spinedit11.Value := pixel.b;
         SpinEdit9Change(Sender);
+      end;
+      if (ascene.NodeName = 'fadein') or (ascene.NodeName = 'fadeout') then begin
+        spinedit3.enabled := true;
+        spinedit3.Value := render.DomstrToInt(ascene.Attributes.GetNamedItem('duration').NodeValue);
+        spinedit4.enabled := true;
+        spinedit4.Value := render.DomstrToInt(ascene.Attributes.GetNamedItem('repeats').NodeValue);
+        floatspinedit3.Enabled := true;
+        //floatspinedit3.Value := render.DomstrToFloat(ascene.Attributes.GetNamedItem('gamma').NodeValue);
       end;
     end;
   end;
@@ -656,7 +672,12 @@ end;
 
 procedure TForm1.FloatSpinEdit2Change(Sender: TObject);
 begin
-    TDOMElement(ascene).SetAttribute('y', FloatToDomstr(floatspinedit2.value));
+  TDOMElement(ascene).SetAttribute('y', FloatToDomstr(floatspinedit2.value));
+end;
+
+procedure TForm1.FloatSpinEdit3Change(Sender: TObject);
+begin
+  TDOMElement(ascene).SetAttribute('gamma', FloatToDomstr(floatspinedit3.value));
 end;
 
 procedure TForm1.Button1Click(Sender: TObject);
@@ -671,11 +692,14 @@ end;
 
 procedure TForm1.Button10Click(Sender: TObject);
   var ch: TDomNode;
+  oldIndex: integer;
 begin
-  if (listbox1.itemindex >= 0) then begin
+  oldIndex := listbox1.itemindex;
+  if (oldIndex >= 0) then begin
     ch := ascene.CloneNode(true);
     RootNode.AppendChild(ch);
     GuiUpdate(Sender);
+    listbox1.itemindex := oldIndex;
   end;
 end;
 
@@ -721,6 +745,30 @@ begin
   ch := doc.CreateElement('pause');
   TDOMElement(ch).SetAttribute('comment', '');
   TDOMElement(ch).SetAttribute('duration', IntToDomstr(100));
+  RootNode.AppendChild(ch);
+  GuiUpdate(Sender);
+end;
+
+procedure TForm1.Button15Click(Sender: TObject);
+  var ch: TDomNode;
+begin
+  ch := doc.CreateElement('fadein');
+  TDOMElement(ch).SetAttribute('comment', '');
+  TDOMElement(ch).SetAttribute('duration', IntToDomstr(100));
+  TDOMElement(ch).SetAttribute('repeats', IntToDomstr(5));
+  TDOMElement(ch).SetAttribute('gamma', FloatToDomstr(0.5));
+  RootNode.AppendChild(ch);
+  GuiUpdate(Sender);
+end;
+
+procedure TForm1.Button16Click(Sender: TObject);
+  var ch: TDomNode;
+begin
+  ch := doc.CreateElement('fadeout');
+  TDOMElement(ch).SetAttribute('comment', '');
+  TDOMElement(ch).SetAttribute('duration', IntToDomstr(100));
+  TDOMElement(ch).SetAttribute('repeats', IntToDomstr(5));
+  TDOMElement(ch).SetAttribute('gamma', FloatToDomstr(0.5));
   RootNode.AppendChild(ch);
   GuiUpdate(Sender);
 end;

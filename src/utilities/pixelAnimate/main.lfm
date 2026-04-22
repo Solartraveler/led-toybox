@@ -118,7 +118,7 @@ object Form1: TForm1
     end
   end
   object GroupBox2: TGroupBox
-    Left = 0
+    Left = 6
     Height = 726
     Top = 68
     Width = 265
@@ -129,8 +129,8 @@ object Form1: TForm1
     TabOrder = 1
     object ListBox1: TListBox
       Left = 6
-      Height = 504
-      Top = 160
+      Height = 448
+      Top = 216
       Width = 251
       Anchors = [akTop, akLeft, akRight, akBottom]
       ItemHeight = 0
@@ -141,7 +141,7 @@ object Form1: TForm1
     object Button5: TButton
       Left = 8
       Height = 25
-      Top = 120
+      Top = 184
       Width = 75
       Caption = 'Up'
       TabOrder = 1
@@ -150,7 +150,7 @@ object Form1: TForm1
     object Button6: TButton
       Left = 92
       Height = 25
-      Top = 120
+      Top = 184
       Width = 75
       Caption = 'Down'
       TabOrder = 2
@@ -159,7 +159,7 @@ object Form1: TForm1
     object Button7: TButton
       Left = 176
       Height = 25
-      Top = 120
+      Top = 184
       Width = 75
       Caption = 'Delete'
       TabOrder = 3
@@ -184,9 +184,9 @@ object Form1: TForm1
       OnClick = Button9Click
     end
     object Button10: TButton
-      Left = 176
+      Left = 177
       Height = 25
-      Top = 80
+      Top = 152
       Width = 75
       Caption = 'Copy'
       TabOrder = 6
@@ -218,13 +218,31 @@ object Form1: TForm1
       Anchors = [akLeft, akBottom]
     end
     object Button14: TButton
-      Left = 92
+      Left = 8
       Height = 25
-      Top = 40
+      Top = 80
       Width = 75
       Caption = 'Pause'
       TabOrder = 9
       OnClick = Button14Click
+    end
+    object Button15: TButton
+      Left = 92
+      Height = 25
+      Top = 40
+      Width = 75
+      Caption = 'Fade in'
+      TabOrder = 10
+      OnClick = Button15Click
+    end
+    object Button16: TButton
+      Left = 177
+      Height = 25
+      Top = 39
+      Width = 75
+      Caption = 'Fade out'
+      TabOrder = 11
+      OnClick = Button16Click
     end
   end
   object Image1: TImage
@@ -291,15 +309,15 @@ object Form1: TForm1
       Left = 9
       Height = 19
       Top = 31
-      Width = 33
-      Caption = 'Roll X'
+      Width = 66
+      Caption = 'Roll/Shift X'
     end
     object Label3: TLabel
       Left = 9
       Height = 19
       Top = 67
-      Width = 33
-      Caption = 'Roll Y'
+      Width = 66
+      Caption = 'Roll/Shift Y'
     end
     object Label4: TLabel
       Left = 9
@@ -343,6 +361,23 @@ object Form1: TForm1
       TabOrder = 5
       Value = 1
       OnChange = SpinEdit12Change
+    end
+    object Label17: TLabel
+      Left = 9
+      Height = 19
+      Top = 161
+      Width = 48
+      Caption = 'Gamma'
+    end
+    object FloatSpinEdit3: TFloatSpinEdit
+      Left = 104
+      Height = 27
+      Top = 160
+      Width = 74
+      Increment = 0.1
+      MaxValue = 10
+      TabOrder = 6
+      OnChange = FloatSpinEdit3Change
     end
   end
   object SpinEdit6: TSpinEdit
@@ -451,9 +486,9 @@ object Form1: TForm1
     OnClick = Panel2Click
   end
   object Label12: TLabel
-    Left = 687
+    Left = 688
     Height = 19
-    Top = 176
+    Top = 170
     Width = 8
     Anchors = [akTop, akRight]
     Caption = 'R'
