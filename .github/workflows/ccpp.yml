@@ -20,6 +20,9 @@ jobs:
     - name: make Apps
       run: make -C src/apps
 
+    - name: make Animations
+      run: make -C animations
+
 #Artifact upload always breaks the CI by becoming deprecated, refusing to repeat pipelines
 #Should this happen once more, I will simply remove artifacts at all.
     - name: Artifacts upload
@@ -32,3 +35,4 @@ jobs:
           src/apps/*/build/*/*.tar
           src/apps/*/pc-simulator/pcSimulate
           src/utilities/pixelAnimate/bin/*
+          animations/build/*.ani
