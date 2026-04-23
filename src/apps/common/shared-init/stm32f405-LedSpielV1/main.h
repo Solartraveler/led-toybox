@@ -145,7 +145,7 @@ void Error_Handler(void);
 /* USER CODE BEGIN Private defines */
 
 #define RAM_SUPPORTS_DMA __attribute__((section(".ram"), aligned(4)))
-#define RAM_NO_DMA __attribute__((section(".ccmram"), aligned(4)))
+#define RAM_NO_DMA __attribute__((section(".bss"), aligned(4)))
 
 /* USER CODE END Private defines */
 
