@@ -93,7 +93,21 @@ FillZerobss:
 LoopFillZerobss:
   cmp r2, r4
   bcc FillZerobss
- 
+
+/* Zero fill the bssDma segment. */
+  ldr r2, =_sbssDma
+  ldr r4, =_ebssDma
+  #movs r3, #0 Already 0 from the zero fill bss
+  b LoopFillZerobssDma
+
+FillZerobssDma:
+  str  r3, [r2]
+  adds r2, r2, #4
+
+LoopFillZerobssDma:
+  cmp r2, r4
+  bcc FillZerobssDma
+
 /* Call static constructors */
     bl __libc_init_array
 /* Call the application's entry point.*/

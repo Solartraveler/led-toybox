@@ -150,6 +150,21 @@ SECTIONS
     _edata = .;        /* define a global symbol at data end */
   } >CCMRAM AT> FLASH
 
+  /* Uninitialized DMA data section */
+  . = ALIGN(4);
+  .bssDma (NOLOAD):
+  {
+    /* This is used by the startup in order to initialize the .bssDma secion */
+    _sbssDma = .;         /* define a global symbol at bss start */
+    __bssDma_start__ = _sbss;
+    *(.bssDma)
+    *(.bssDma*)
+
+    . = ALIGN(4);
+    _ebssDma = .;         /* define a global symbol at bss end */
+    __bssDma_end__ = _ebss;
+  } >RAM
+
   _siccmram = LOADADDR(.ccmram);
 
   /* CCM-RAM section
