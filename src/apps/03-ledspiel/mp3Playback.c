@@ -45,13 +45,12 @@ RAM_SUPPORTS_DMA static uint16_t g_dacFifoBuffer[OUTPUT_BUFFER_ELEMENTS];
 
 typedef struct {
 	FIL f; //file to read the input data from
-	bool opened; //if true, f is valid
 	float volume; //scaling factor
 	uint8_t inBuffer[IN_BUFFER_SIZE]; //file buffer to be used by libmad
 	size_t inBufferUsed; //until which position inBuffer contains valid data
 	uint32_t bytesRead; //number of bytes read from the input file
 	uint32_t bytesGenerated; //number of decoded samples generated (converted to 8bit, so equal to output bytes)
-	bool play; //if true, the file is not at the end yet (or the user did not select stop)
+	bool play; //if true, the file is not at the end yet (or the user did not select stop) and f is valid
 	bool needData; //if true, decoding function should refill inBuffer
 	uint32_t sampleRate; //in [Hz]
 	uint32_t bitRate; //in [Hz]
@@ -67,14 +66,12 @@ typedef struct {
 	uint8_t overlap[OVERLAP_BUFFER_SIZE];
 } playerState_t;
 
-//Currently ccmram is not initialized
 RAM_NO_DMA playerState_t g_playerState;
 
 //A big thank you to https://stackoverflow.com/questions/39803572/libmad-playback-too-fast-if-read-in-chunks
 enum mad_flow MadInput(void *data, struct mad_stream *stream) {
 	(void)data;
-	if ((g_playerState.opened == false) || (g_playerState.play == false)) {
-		g_playerState.play = false;
+	if (g_playerState.play == false) {
 		return MAD_FLOW_STOP;
 	}
 	uint32_t tStart = Timer32BitGet();
@@ -112,7 +109,7 @@ enum mad_flow MadInput(void *data, struct mad_stream *stream) {
 		result = MAD_FLOW_CONTINUE;
 	} else {
 		printf("Error, read returned with code %u\r\n", rRead);
-		g_playerState.play = false;
+		PlaybackStop();
 	}
 	uint32_t tStop = Timer32BitGet();
 	g_playerState.ticksInput += tStop - tStart;
@@ -237,7 +234,6 @@ bool PlaybackStart(const char * filename, float volume) {
 	g_playerState.ticksInput = 0;
 	g_playerState.ticksOutput = 0;
 	g_playerState.ticksTotal = 0;
-	g_playerState.opened = true;
 	g_playerState.play = true;
 	g_playerState.needData = true;
 	g_playerState.volume = volume;
@@ -269,7 +265,7 @@ bool PlaybackProcess(void) {
 	}
 	Timer32BitInit(0);
 	Timer32BitStart();
-	void *error_data = NULL;
+	void * error_data = NULL;
 	struct mad_decoder * pMad = &(g_playerState.madDecoder);
 	struct mad_stream * stream = &pMad->sync->stream;
 	struct mad_frame * frame = &pMad->sync->frame;
@@ -319,15 +315,16 @@ bool PlaybackProcess(void) {
 	uint32_t stamp = Timer32BitGet();
 	g_playerState.ticksTotal += stamp;
 	Timer32BitStop();
-	if (!g_playerState.play) {
-		AudioStop(); //Otherwise we end up with playing the output FIFO in a loop (sounds annoying)
-	}
 	//printf("Read: %u\r\n", (unsigned int)g_playerState.bytesRead);
 	return true;
 }
 
 bool PlaybackStop(void) {
 	AudioStop();
+	if (g_playerState.play) {
+		f_close(&g_playerState.f);
+		g_playerState.play = false;
+	}
 	return true;
 }
 

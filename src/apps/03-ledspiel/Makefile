@@ -17,7 +17,7 @@
 #Name of this application
 NAME     = LedSpiel
 #Version of this application, to be used in the metadata
-VERSION  = 0.3.0
+VERSION  = 0.4.0
 #Author of this application, to be used in the metadata
 AUTHOR   = Malte Marwedel
 #Use the spdx notation here, to be used in the metadata
@@ -114,12 +114,14 @@ C_SOURCES += $(STM_HAL)/Src/$(CHIPFAMILY)_hal_exti.c
 C_SOURCES += $(STM_HAL)/Src/$(CHIPFAMILY)_hal_tim.c
 C_SOURCES += $(STM_HAL)/Src/$(CHIPFAMILY)_hal_tim_ex.c
 C_SOURCES += $(LEDSPIELLIB)/boxusb.c
+C_SOURCES += $(LEDSPIELLIB)/chargerControl.c
 C_SOURCES += $(LEDSPIELLIB)/flash.c
 C_SOURCES += $(LEDSPIELLIB)/keyInput.c
 C_SOURCES += $(LEDSPIELLIB)/ledMatrix.c
 C_SOURCES += $(LEDSPIELLIB)/leds.c
 C_SOURCES += $(LEDSPIELLIB)/mcu.c
 C_SOURCES += $(LEDSPIELLIB)/rs232debug.c
+C_SOURCES += $(LEDSPIELLIB)/simpleadc.c
 C_SOURCES += $(LEDSPIELLIB)/stackSampler.c
 C_SOURCES += $(LEDSPIELLIB)/timer32Bit.c
 C_SOURCES += $(LEDSPIELLIB)/watchdog.c
@@ -149,6 +151,7 @@ C_SOURCES += $(LIBMAD)/stream.c
 C_SOURCES += $(LIBMAD)/synth.c
 C_SOURCES += $(LIBMAD)/timer.c
 C_SOURCES += $(LIBMAD)/version.c
+C_SOURCES += adc.c
 C_SOURCES += animationPlayback.c
 C_SOURCES += ledspiel.c
 C_SOURCES += mp3Playback.c
