@@ -18,7 +18,9 @@
 #define MATRIX_COLORS_VAL_MAX 511
 #define MATRIX_COLORS_PER_PIXEL 3
 
-//A higher value results in more bus transfers
+/*A higher value results in more bus transfers and an effective higher refresh rate
+  if the brighness is not at the minimum.
+*/
 #define MATRIX_DIM_FACTOR_MAX 8
 
 //In [Hz]
@@ -35,9 +37,8 @@ bool MatrixInit(uint16_t colorMax);
 //The matrix data must be of MATRIX_X * MATRIX_Y * bytesPerPixel size.
 void MatrixFrame(uint8_t bytesPerPixel, const uint8_t * pFrame);
 
-//Dims the matrix. 255 = maximum brightness, 0 = minimum brighness
+//Dims the matrix. 255 = maximum brightness, 0 = minimum brighness (nothigh seen)
 void MatrixBrightness(uint8_t value);
 
 //Matrix gets dark. Entering power saving mode.
 void MatrixDisable(void);
-

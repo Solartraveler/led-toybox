@@ -23,7 +23,7 @@ Then the following would happen:
 The bug in the errata results in wrong data to be written to R10_GPIO_Port->ODR
 and Line1_GPIO_Port->BSRR.
 For R10_GPIO_Port this will stay unnoticed as the right data are written within
-somy microseconds again and PB1 is configured as input, so noting happens here.
+some microseconds again and PB1 is configured as input, so noting happens here.
 But for Line1_GPIO_Port this results in values written to the other pins
 configured as output. And one of the pins is the SD card chip select. A random
 enable/disable results in wrong data to be read from the SD card. The SD card
@@ -44,7 +44,7 @@ This would double the required memory amount.
 
 #include "ledspiellib/ledMatrix.h"
 
-//Should provide F_CPU
+//Should provide F_CPU, RAM_SUPPORTS_DMA and all other definitions for the register accesses
 #include "main.h"
 
 #define DMA_STREAMX DMA2_Stream5
@@ -58,11 +58,10 @@ static_assert(MATRIX_X * MATRIX_COLORS_PER_PIXEL <= 16, "Error, one port only su
 RAM_SUPPORTS_DMA static uint16_t g_matrixBuffer[MATRIX_COLORS_VAL_MAX * MATRIX_Y];
 static uint16_t g_colorMax;
 /*
-0 = invalid value, timers will not run, MatrixStop() ends in an endless loop
-1 = maximum brighness
-MATRIX_DIM_FACTOR_MAX = (1 / MATRIX_DIM_FACTOR_MAX) *  maximum brighness ) = minimum brightness
+0 = nothing is shown
+MATRIX_DIM_FACTOR_MAX = maximum brighness
 */
-static uint16_t g_dimFactor = 1;
+static uint16_t g_brightFactor = MATRIX_DIM_FACTOR_MAX;
 
 RAM_SUPPORTS_DMA static uint32_t g_lineDriver[MATRIX_DIM_FACTOR_MAX * MATRIX_Y];
 
@@ -83,13 +82,13 @@ void MatrixStop(void) {
 
 void MatrixStart(void) {
 	uint32_t transfersX = g_colorMax * MATRIX_Y;
-	uint32_t transfersY = MATRIX_Y * g_dimFactor;
+	uint32_t transfersY = MATRIX_Y * MATRIX_DIM_FACTOR_MAX;
 
-	uint32_t transfersXsecond = transfersX * MATRIX_REFRESHRATE * g_dimFactor;
+	uint32_t transfersXsecond = transfersX * MATRIX_REFRESHRATE * MATRIX_DIM_FACTOR_MAX;
 
 	/* Min and max estimate:
 	   168MHz, 1 color -> 1 transfer every 336000 clocks
-	   48Mhz, 1024 colors, 5lines, dim factor 8 -> 1 transfer every 11 clocks
+	   48Mhz, 1024 colors, 5lines, g_brightFactor 8 -> 1 transfer every 11 clocks
 	*/
 
 	uint32_t timerXperiod = F_CPU / transfersXsecond;
@@ -142,6 +141,27 @@ void MatrixStart(void) {
 	TIM1->CR1 |= TIM_CR1_CEN;
 }
 
+static void MatrixLinesCreate(void) {
+	//printf("Bright factor: %u\r\n", (unsigned int)g_brightFactor);
+	for (uint32_t i = 0; i < MATRIX_DIM_FACTOR_MAX; i++) {
+		uint32_t offset = i * MATRIX_Y;
+		//recreate line driver array (GPIO Port set and reset register values)
+		if (i < g_brightFactor) {
+			g_lineDriver[offset + 0] = Line1_Pin | ((Line2_Pin | Line3_Pin | Line4_Pin | Line5_Pin) << 16);
+			g_lineDriver[offset + 1] = Line2_Pin | ((Line1_Pin | Line3_Pin | Line4_Pin | Line5_Pin) << 16);
+			g_lineDriver[offset + 2] = Line3_Pin | ((Line1_Pin | Line2_Pin | Line4_Pin | Line5_Pin) << 16);
+			g_lineDriver[offset + 3] = Line4_Pin | ((Line1_Pin | Line2_Pin | Line3_Pin | Line5_Pin) << 16);
+			g_lineDriver[offset + 4] = Line5_Pin | ((Line1_Pin | Line2_Pin | Line3_Pin | Line4_Pin) << 16);
+		} else {
+			g_lineDriver[offset + 0] = ((Line1_Pin | Line2_Pin | Line3_Pin | Line4_Pin | Line5_Pin) << 16); //all lines off
+			g_lineDriver[offset + 1] = ((Line1_Pin | Line2_Pin | Line3_Pin | Line4_Pin | Line5_Pin) << 16); //all lines off
+			g_lineDriver[offset + 2] = ((Line1_Pin | Line2_Pin | Line3_Pin | Line4_Pin | Line5_Pin) << 16); //all lines off
+			g_lineDriver[offset + 3] = ((Line1_Pin | Line2_Pin | Line3_Pin | Line4_Pin | Line5_Pin) << 16); //all lines off
+			g_lineDriver[offset + 4] = ((Line1_Pin | Line2_Pin | Line3_Pin | Line4_Pin | Line5_Pin) << 16); //all lines off
+		}
+	}
+}
+
 bool MatrixInit(uint16_t colorMax) {
 	if ((colorMax > MATRIX_COLORS_VAL_MAX) || (colorMax < 2)) {
 		return false;
@@ -176,13 +196,7 @@ bool MatrixInit(uint16_t colorMax) {
 	memset(g_matrixBuffer, 0, sizeof(g_matrixBuffer));
 	memset(g_lineDriver, 0, sizeof(g_lineDriver));
 
-	//recreate line driver array (GPIO Port set and reset register values)
-	g_lineDriver[0] = Line1_Pin | ((Line2_Pin | Line3_Pin | Line4_Pin | Line5_Pin) << 16);
-	g_lineDriver[1] = Line2_Pin | ((Line1_Pin | Line3_Pin | Line4_Pin | Line5_Pin) << 16);
-	g_lineDriver[2] = Line3_Pin | ((Line1_Pin | Line2_Pin | Line4_Pin | Line5_Pin) << 16);
-	g_lineDriver[3] = Line4_Pin | ((Line1_Pin | Line2_Pin | Line3_Pin | Line5_Pin) << 16);
-	g_lineDriver[4] = Line5_Pin | ((Line1_Pin | Line2_Pin | Line3_Pin | Line4_Pin) << 16);
-	g_lineDriver[5] = ((Line1_Pin | Line2_Pin | Line3_Pin | Line4_Pin | Line5_Pin) << 16); //all lines off
+	MatrixLinesCreate();
 
 	MatrixStart();
 
@@ -270,13 +284,8 @@ void MatrixFrame(uint8_t bytesPerPixel, const uint8_t * pFrame) {
 }
 
 void MatrixBrightness(uint8_t value) {
-	uint32_t scaled = value / (256 / MATRIX_DIM_FACTOR_MAX); //0.. (MATRIX_DIM_FACTOR_MAX - 1)
-	g_dimFactor = MATRIX_DIM_FACTOR_MAX - scaled; //1...MATRIX_DIM_FACTOR_MAX
-	//printf("Dim factor: %u\r\n", (unsigned int)g_dimFactor);
-	if (TIM1->CR1 & TIM_CR1_CEN) {
-		MatrixStop();
-		MatrixStart();
-	}
+	g_brightFactor = (value * MATRIX_DIM_FACTOR_MAX) / 255;
+	MatrixLinesCreate();
 }
 
 void MatrixDisable(void) {
