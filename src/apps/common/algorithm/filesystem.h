@@ -15,6 +15,8 @@ extern FATFS g_fatfs;
 */
 uint8_t FilesystemMount(void);
 
+void FilesystemUnmount(void);
+
 bool FilesystemReadFile(const char * filename, void * data, size_t bufferLen, size_t * pReadLen);
 
 bool FilesystemWriteFile(const char * filename, const void * data, size_t dataLen);

@@ -38,6 +38,10 @@ uint8_t FilesystemMount(void) {
 	}
 }
 
+void FilesystemUnmount(void) {
+	f_unmount("0");
+}
+
 bool FilesystemReadFile(const char * filename, void * data, size_t bufferLen, size_t * pReadLen) {
 	bool success = false;
 	FIL f;
