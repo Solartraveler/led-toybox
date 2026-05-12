@@ -17,7 +17,7 @@
 #Name of this application
 NAME     = LedSpiel
 #Version of this application, to be used in the metadata
-VERSION  = 0.4.0
+VERSION  = 0.5.0
 #Author of this application, to be used in the metadata
 AUTHOR   = Malte Marwedel
 #Use the spdx notation here, to be used in the metadata
@@ -161,7 +161,8 @@ C_SOURCES += arm/audioOut.c
 # ASM sources
 ASM_SOURCES = $(SHARED_INIT)/startup_$(CHIP).s
 
-ANI_SOURCES = charging.xml
+ANI_SOURCES = batteryEmpty.xml
+ANI_SOURCES += charging.xml
 ANI_SOURCES += errorSdCard.xml
 ANI_SOURCES += noFiles.xml
 ANI_SOURCES += noSdCard.xml

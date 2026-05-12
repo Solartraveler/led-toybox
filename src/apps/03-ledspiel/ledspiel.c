@@ -13,7 +13,7 @@ Reading infrared keys: Not working
 Playing animations: Working
 Reading keys: Working
 Charging: Working
-Auto power off: Not working
+Auto power off: Working
 */
 
 #include <ctype.h>
@@ -35,6 +35,7 @@ Auto power off: Not working
 #include "ledspiellib/ledMatrix.h"
 #include "ledspiellib/leds.h"
 #include "ledspiellib/mcu.h"
+#include "ledspiellib/power.h"
 #include "ledspiellib/rs232debug.h"
 #include "ledspiellib/simpleadc.h"
 #include "ledspiellib/stackSampler.h"
@@ -43,6 +44,7 @@ Auto power off: Not working
 #include "adc.h"
 #include "animationPlayback.h"
 #include "audioOut.h"
+#include "batteryEmpty.h"
 #include "charging.h"
 #include "errorSdCard.h"
 #include "filesystem.h"
@@ -69,14 +71,18 @@ typedef struct {
 	bool animation;
 	bool brightnessManual;
 	bool charging;
+	bool empty;
+	bool simEmpty;
 	uint32_t chargedSeconds;
 	uint16_t chargeTryReason; //just for printfs to not flood the debug interface
-	uint16_t chargeMaxU; // in [mV]
+	uint16_t chargeMaxU; //in [mV]
+	uint16_t chargeNoRetry; //in [s] if a charge has been stopped, do not restart
 	float volume;
 	uint16_t brightnessShould;
 	uint16_t brightnessIs;
 	uint32_t cycleSecond;
 	uint32_t cycle10ms;
+	uint32_t cyclePowerDown; //if this counter reaches 0, the device is switched off [s]
 	uint8_t frameTest;
 	uint8_t filesystem; //0 = mounted, card working
 	uint32_t inputPrevious;
@@ -98,6 +104,7 @@ void MainMenu(void) {
 	printf("a: Audio test\r\n");
 	printf("b: Jump to ST DFU bootloader\r\n");
 	printf("c: Charger state\r\n");
+	printf("e: Simulate battery empty\r\n");
 	printf("f: LED frame test\r\n");
 	printf("h: This help screen\r\n");
 	printf("l: List files\r\n");
@@ -558,6 +565,18 @@ static void PrintTemperature(int32_t temperature) {
 	printf("Temperature %u.%03u°C\r\n", (unsigned int)degree, (unsigned int)sub);
 }
 
+static void BatEmptyPrepare(void) {
+	g_ledspielState.empty = true;
+	g_ledspielState.cyclePowerDown = 15;
+	PlaybackStop();
+	if (g_ledspielState.filesystem == 0) {
+		FilesystemUnmount();
+		g_ledspielState.filesystem = 3;
+	}
+	FlashDisable();
+	AnimationStartRam(build_batteryEmpty_ani, build_batteryEmpty_ani_len, false);
+}
+
 static void BatteryControl(void) {
 	/*If there is no battery connected, parasitic charge builds up, resulting in a
 	  higher voltage on the first measurement. Therfore we measure twice if charging is disabled.
@@ -588,7 +607,10 @@ static void BatteryControl(void) {
 	if (g_ledspielState.charging == false) {
 		uint32_t cV = AdcBatteryVoltageGet();
 		cV = AdcBatteryVoltageGet();
-		if (cV < 1000) {
+		if (g_ledspielState.simEmpty) {
+			cV = 1600; //2 NIMH cells defintion of empty
+		}
+		if (cV < 800) {
 			if (g_ledspielState.chargeTryReason != 1) {
 				printf("No battery or defective (%umV)\r\n", (unsigned int)cV);
 				g_ledspielState.chargeTryReason = 1;
@@ -604,7 +626,7 @@ static void BatteryControl(void) {
 				PrintTemperature(temperature);
 				g_ledspielState.chargeTryReason = 2;
 			}
-		} else {
+		} else if (g_ledspielState.chargeNoRetry == 0) {
 			g_ledspielState.chargeMaxU = 0;
 			if (g_ledspielState.chargeTryReason != 4) {
 				printf("Try to charge (%umV)\r\n", (unsigned int)cV);
@@ -612,6 +634,9 @@ static void BatteryControl(void) {
 			ChargerControl(true);
 			HAL_Delay(2);
 			uint32_t cV2 = AdcBatteryVoltageGet();
+			if (g_ledspielState.simEmpty) {
+				cV2 = 1600; //2 NIMH cells defintion of empty
+			}
 			//typically, the voltage increases by about 30mV (resistance of cables, chargers, batteries)
 			if ((cV + 20) < cV2) {
 				printf("Charging %umV (+%umV)\r\n", (unsigned int)cV2, (unsigned int)(cV2 - cV));
@@ -623,7 +648,20 @@ static void BatteryControl(void) {
 					g_ledspielState.chargeTryReason = 4;
 				}
 				ChargerControl(false);
+				if (cV < 2000) {
+					if (g_ledspielState.empty == false) {
+						printf("Battery empty (%umV)\r\n", (unsigned int)cV2);
+						BatEmptyPrepare();
+					}
+				} else {
+					if (g_ledspielState.chargeTryReason != 4) {
+						printf("Running on batteries (%umV)\r\n", (unsigned int)cV2);
+						g_ledspielState.chargeTryReason = 4;
+					}
+				}
 			}
+		} else {
+			g_ledspielState.chargeNoRetry--;
 		}
 	} else {
 		g_ledspielState.chargedSeconds++;
@@ -635,28 +673,34 @@ static void BatteryControl(void) {
 			printf("Stop charge - timeout (%umV)\r\n", (unsigned int)cV2);
 			ChargerControl(false);
 			g_ledspielState.charging = false;
+			g_ledspielState.chargeNoRetry = 60 * 60;
 		} else if (cV2 < 1200) {
 			printf("Stop charge - short circuit or defective (%umV)\r\n", (unsigned int)cV2);
 			ChargerControl(false);
 			g_ledspielState.charging = false;
+			g_ledspielState.chargeNoRetry = 60;
 		} else if (cV2 > 2700) {
 			printf("Stop charge - no battery or defective (%umV)\r\n", (unsigned int)cV2);
 			ChargerControl(false);
 			g_ledspielState.charging = false;
+			g_ledspielState.chargeNoRetry = 60;
 		} else if (cV2 > 2650) {
 			printf("Stop charge - battery full or defective (%umV)\r\n", (unsigned int)cV2);
 			ChargerControl(false);
 			g_ledspielState.charging = false;
+			g_ledspielState.chargeNoRetry = 60;
 		} else if (cV2 + 50 < g_ledspielState.chargeMaxU) {
 			uint32_t drop = g_ledspielState.chargeMaxU - cV2;
 			printf("Stop charge - battery full or USB detatched (%umV, -%umV)\r\n", (unsigned int)cV2, (unsigned int)drop);
 			ChargerControl(false);
 			g_ledspielState.charging = false;
+			g_ledspielState.chargeNoRetry = 5;
 		} else if (temperature > 50000) {
 			printf("Stop charge - too hot (%umV)\r\n", (unsigned int)cV2);
 			PrintTemperature(temperature);
 			ChargerControl(false);
 			g_ledspielState.charging = false;
+			g_ledspielState.chargeNoRetry = 60;
 		}
 	}
 }
@@ -665,6 +709,11 @@ static void ChargerState(void) {
 	uint32_t cV = AdcBatteryVoltageGet();
 	printf("%s %umV max %umV %us\r\n", g_ledspielState.charging ? "charging" : "disabled",
 	       (unsigned int)cV, (unsigned int)g_ledspielState.chargeMaxU, (unsigned int)g_ledspielState.chargedSeconds);
+}
+
+static void SimBatEmpty(void) {
+	g_ledspielState.simEmpty = !g_ledspielState.simEmpty;
+	printf("Simulate empty battery: %u\r\n", g_ledspielState.simEmpty);
 }
 
 void AppInit(void) {
@@ -683,6 +732,7 @@ void AppInit(void) {
 	if (clockError) {
 		printf("Error, setting up PLL - %u\r\n", clockError);
 	}
+	g_ledspielState.cyclePowerDown = 60 * 60 * 24;
 	KeyInputInit();
 	StackSampleInit();
 	AdcInit();
@@ -692,6 +742,7 @@ void AppInit(void) {
 	printf("Battery: %umV, Vcc: %umV\r\n", (unsigned int)uBattery, (unsigned int)uAvcc);
 	int32_t temperature = AdcTemperatureGet();
 	PrintTemperature(temperature);
+	BatteryControl(); //checks if the battery is empty
 	/*It looks like, if higher CPU frequencies are used, the divider needs to be
 	  at least 4. Selecting a higher APB divider does not help.
 	  A divider of 2 for the SPI works with 96MHz, but with 144MHz,
@@ -699,17 +750,21 @@ void AppInit(void) {
 	  At  168MHz (APB2Div = 4, SPI div = 2 -> 21MHz) reading fails too.
 	  But 168MHz (APB2Div = 2, SPI div = 4 -> 21MHz) works.
 	*/
+	if (g_ledspielState.empty == false) {
 #if (F_CPU > 50000000)
-	FlashEnable(4);
+		FlashEnable(4);
 #else
-	FlashEnable(2);
+		FlashEnable(2);
 #endif
-	if (FlashReady()) {
-		SdmmcCrcMode(SDMMC_CRC_WRITE);
-		g_ledspielState.filesystem = FilesystemMount();
-		g_ledspielState.usbEnabled = false;
-		g_ledspielState.playbackFilesAuto = 0;
-		Led1Green();
+		if (FlashReady()) {
+			SdmmcCrcMode(SDMMC_CRC_WRITE);
+			g_ledspielState.filesystem = FilesystemMount();
+			g_ledspielState.usbEnabled = false;
+			g_ledspielState.playbackFilesAuto = 0;
+			Led1Green();
+		} else {
+			g_ledspielState.filesystem = 1;
+		}
 	} else {
 		g_ledspielState.filesystem = 1;
 	}
@@ -718,10 +773,12 @@ void AppInit(void) {
 	g_ledspielState.brightnessShould = g_ledspielState.brightnessIs;
 	printf("Ready. Press h for available commands\r\n");
 	StackSampleCheck();
-	if (g_ledspielState.filesystem == 1) {
-		AnimationStartRam(build_noSdCard_ani, build_noSdCard_ani_len, true);
-	} else if (g_ledspielState.filesystem > 1) {
-		AnimationStartRam(build_errorSdCard_ani, build_errorSdCard_ani_len, true);
+	if (g_ledspielState.empty == false) {
+		if (g_ledspielState.filesystem == 1) {
+			AnimationStartRam(build_noSdCard_ani, build_noSdCard_ani_len, true);
+		} else if (g_ledspielState.filesystem > 1) {
+			AnimationStartRam(build_errorSdCard_ani, build_errorSdCard_ani_len, true);
+		}
 	}
 	Rs232Flush();
 }
@@ -732,6 +789,15 @@ static void AppCycle1s(void) {
 	LightMeasure();
 	StackSampleCheck();
 	BatteryControl();
+	if (g_ledspielState.cyclePowerDown) {
+		g_ledspielState.cyclePowerDown--;
+	} else {
+		printf("Powering down\r\n");
+		Rs232Flush();
+		FlashDisable();
+		MatrixDisable();
+		PowerOff(); //will not return
+	}
 }
 
 //called every 10ms
@@ -740,24 +806,25 @@ static void AppCycle10ms(void) {
 }
 
 //static state keys
-#define INPUT_FOLDER 0x1E
+#define INPUT_FOLDER 0x3C
 //push button
-#define INPUT_ANIMATION 0x20
+#define INPUT_ANIMATION 0x02
 //push button
 #define INPUT_MUSIC 0x40
 
 void AppCycle(void) {
 	/*Intended bit meaning
 	  0: unused
-	  1...4: Folder selection
-	  5: Next animation
+	  1: Next animation
+	  2...5: Folder selection
 	  6: Next music
 	*/
 	uint32_t keyInput = KeyInputGet();
 	if (keyInput != g_ledspielState.inputPrevious) {
+		printf("Key states: %x\r\n", (unsigned int)keyInput);
 		g_ledspielState.playbackFilesAuto = 0;
 		if ((keyInput & INPUT_FOLDER) != (g_ledspielState.inputPrevious & INPUT_FOLDER)) {
-			g_ledspielState.folderNum = (keyInput & INPUT_FOLDER) >> 1;
+			g_ledspielState.folderNum = (keyInput & INPUT_FOLDER) >> 2;
 			g_ledspielState.folderUpdated = true;
 		}
 		if (keyInput & INPUT_ANIMATION) {
@@ -778,6 +845,7 @@ void AppCycle(void) {
 		case 'r': NVIC_SystemReset(); break;
 		case 'b': JumpDfu(); break;
 		case 'c': ChargerState(); break;
+		case 'e': SimBatEmpty(); break;
 		case 't': BenchmarkSdcard(); break;
 		case 'u': UsbToggle(); break;
 		case 'a': AudioTest(); break;
@@ -819,7 +887,6 @@ void AppCycle(void) {
 	} else {
 		PlayContinue();
 	}
-
 	if (g_ledspielState.frameTest == 0) {
 		if (AnimationProcess() == false) {
 			g_ledspielState.animationNext = true;
