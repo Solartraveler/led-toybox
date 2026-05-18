@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<storybook Xsize="5" Ysize="5" fileformat="1" colorFormat="8">
+  <frame comment="" duration="100">
+    <line>000000000000FFFFFFFFFFFFFFFFFFFFFFFF000000000000000000000000</line>
+    <line>000000000000FFFFFFFFFFFF000000000000FFFFFFFFFFFF000000000000</line>
+    <line>000000000000FFFFFFFFFFFF000000000000FFFFFFFFFFFF000000000000</line>
+    <line>000000000000FFFFFFFFFFFF000000000000FFFFFFFFFFFF000000000000</line>
+    <line>000000000000FFFFFFFFFFFFFFFFFFFFFFFF000000000000000000000000</line>
+  </frame>
+  <fadein gamma="0.5" comment="" repeats="10" duration="50"/>
+  <pause comment="" duration="500"/>
+  <fadeout gamma="0.5" comment="" repeats="10" duration="50"/>
+</storybook>
