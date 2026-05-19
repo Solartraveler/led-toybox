@@ -7,7 +7,7 @@
 //Returns true if starting was successful
 bool PlaybackStart(const char * filename, float volume);
 
-//Call within a short timeframe. Retunrs true if there was actually anything to do.
+//Call within a short timeframe. Returns true if there was actually anything to do.
 bool PlaybackProcess(void);
 
 //Stops the playback. Returns true if successful

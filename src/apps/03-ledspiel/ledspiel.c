@@ -39,6 +39,7 @@ Auto power off: Working
 #include "ledspiellib/rs232debug.h"
 #include "ledspiellib/simpleadc.h"
 #include "ledspiellib/stackSampler.h"
+#include "ledspiellib/timer32Bit.h"
 #include "ledspiellib/watchdog.h"
 
 #include "adc.h"
@@ -69,6 +70,7 @@ typedef struct {
 	bool usbEnabled;
 	bool playing;
 	bool animation;
+	bool animationRepeat;
 	bool brightnessManual;
 	bool charging;
 	bool empty;
@@ -93,6 +95,11 @@ typedef struct {
 	bool animationNext;
 	bool playbackNext;
 	bool folderUpdated;
+	uint32_t ticksSleep1s;
+	uint32_t ticksSleep10s;
+	uint8_t cpuLoad1s;
+	uint8_t cpuLoadCnt;
+	uint8_t cpuLoad10s;
 } ledspielState_t;
 
 ledspielState_t g_ledspielState;
@@ -107,6 +114,7 @@ void MainMenu(void) {
 	printf("e: Simulate battery empty\r\n");
 	printf("f: LED frame test\r\n");
 	printf("h: This help screen\r\n");
+	printf("i: CPU idle\r\n");
 	printf("l: List files\r\n");
 	printf("m: Next mp3\r\n");
 	printf("n: Next animation\r\n");
@@ -122,6 +130,7 @@ void MainMenu(void) {
 }
 
 #define FLIPBYTESU16(X) ((((X) >> 8) & 0xFF) | (((X) << 8) & 0xFF00))
+#define FRAME_TEST_NUM 7
 
 void FrameTest(uint8_t id) {
 	if (id == 0) {
@@ -216,10 +225,14 @@ void FrameTest(uint8_t id) {
 		data[MATRIX_X * 2 * U16_PER_PIXEL3 + U16_PER_PIXEL3 * 1 + 0] = FLIPBYTESU16(0x016);
 		data[MATRIX_X * 2 * U16_PER_PIXEL3 + U16_PER_PIXEL3 * 2 + 0] = FLIPBYTESU16(0x001);
 		MatrixFrame(U16_PER_PIXEL3 * sizeof(uint16_t), (uint8_t*)data);
+	} else if (id == 6) { //maximum brightness to check worst case power consumption
+		printf("2 bit, all LEDs on\r\n");
+		MatrixInit(2);
+		uint8_t data[MATRIX_X * MATRIX_Y];
+		memset(data, 0x3F, sizeof(data)); //white
+		MatrixFrame(1, data);
 	}
 }
-
-
 
 static void PrepareOtherProgam(void) {
 	Led2Off();
@@ -364,24 +377,50 @@ void ListFiles(const char * directory, const char * prefix, uint32_t recursive) 
 	}
 }
 
+#define SORT_FILES_MAX 128
+#define SORT_CHARS_MAX 3
+
+int PlaySelectCompare(const void * pA, const void * pB) {
+	const char * cA = (const char *)pA;
+	const char * cB = (const char *)pB;
+	for (uint32_t i = 0; i < SORT_CHARS_MAX; i++) {
+		char a = *cA;
+		char b = *cB;
+		if (a > b) {
+			return 1;
+		} else if (a < b) {
+			return -1;
+		}
+		cA++;
+		cB++;
+	}
+	return 0;
+}
+
+/*Selects the filenum (0 based) from the directory dirnum.
+  Known limit: If filenames starting with an equal name of SORT_CHARS_MAX,
+  only the first file will be selected.
+  Returns true if a file with the prefix and filenum was found.
+*/
 bool PlaySelectFilename(uint32_t dirnum, uint32_t filenum, const char * fileEnding, char * filename, size_t len) {
 	DIR d;
 	FILINFO fi;
 	char dirname[16];
 	bool found = false;
 	snprintf(dirname, sizeof(dirname), "/%02u", (unsigned int)dirnum);
+	//1. get all filenames and put the start chars into a buffer
+	char toSort[SORT_FILES_MAX * SORT_CHARS_MAX];
+	uint32_t numFound = 0;
 	if (f_opendir(&d, dirname) == FR_OK) {
 		//printf("Opened %s\r\n", dirname);
 		while (f_readdir(&d, &fi) == FR_OK) {
 			if (fi.fname[0]) {
 				//printf("%s\r\n", fi.fname);
 				if ((EndsWith(fi.fname, fileEnding)) && (fi.fattrib & AM_DIR) == 0) {
-					if (filenum == 0) {
-						snprintf(filename, len, "%s/%s", dirname, fi.fname);
-						found = true;
-						break;
+					if (numFound < SORT_FILES_MAX) {
+						memcpy(toSort + numFound * SORT_CHARS_MAX, fi.fname, SORT_CHARS_MAX);
+						numFound++;
 					}
-					filenum--;
 				}
 			} else {
 				break;
@@ -390,6 +429,40 @@ bool PlaySelectFilename(uint32_t dirnum, uint32_t filenum, const char * fileEndi
 		f_closedir(&d);
 	} else {
 		printf("Failed to open %s\r\n", dirname);
+		return false;
+	}
+	if (filenum >= numFound) {
+		return false;
+	}
+	//2. okay, sort the files
+	qsort(toSort, numFound, SORT_CHARS_MAX, &PlaySelectCompare);
+#if 0
+	printf("Sorted\r\n");
+	for (uint32_t i = 0; i < numFound; i++) {
+		for (uint32_t j = 0; j < SORT_CHARS_MAX; j++) {
+			printf("%c", toSort[i * SORT_CHARS_MAX + j]);
+		}
+		printf("\r\n");
+	}
+#endif
+	char fileStart[SORT_CHARS_MAX + 1] = {0};
+	memcpy(fileStart, &(toSort[filenum * SORT_CHARS_MAX]), SORT_CHARS_MAX);
+	//3. Now get the right file by opening the directory again
+	if (f_opendir(&d, dirname) == FR_OK) {
+		//printf("Opened %s\r\n", dirname);
+		while (f_readdir(&d, &fi) == FR_OK) {
+			if (fi.fname[0]) {
+				//printf("%s\r\n", fi.fname);
+				if ((EndsWith(fi.fname, fileEnding)) && (BeginsWith(fi.fname, fileStart)) && (fi.fattrib & AM_DIR) == 0) {
+					snprintf(filename, len, "%s/%s", dirname, fi.fname);
+					found = true;
+					break;
+				}
+			} else {
+				break;
+			}
+		}
+		f_closedir(&d);
 	}
 	return found;
 }
@@ -459,14 +532,15 @@ void BrightnessDown(void) {
 }
 
 void MatrixFrameTest(void) {
-	g_ledspielState.frameTest = (g_ledspielState.frameTest + 1) % 6;
+	g_ledspielState.frameTest = (g_ledspielState.frameTest + 1) % FRAME_TEST_NUM;
 	FrameTest(g_ledspielState.frameTest);
 }
 
-void PlayContinue(void) {
+bool PlayContinue(void) {
 	if (g_ledspielState.filesystem != 0) {
-		return;
+		return false;
 	}
+	bool work = false;
 	if (g_ledspielState.folderUpdated) {
 		g_ledspielState.folderUpdated = false;
 		g_ledspielState.animationFileNum = 0;
@@ -475,6 +549,7 @@ void PlayContinue(void) {
 		g_ledspielState.playing = false;
 		AnimationStop();
 		g_ledspielState.animation = false;
+		g_ledspielState.animationRepeat = false; //so the first animation is played only once
 	}
 
 	if (g_ledspielState.playbackNext) {
@@ -505,8 +580,13 @@ void PlayContinue(void) {
 			g_ledspielState.playing = true;
 			PlaybackStart(filename, g_ledspielState.volume);
 			g_ledspielState.playbackFilesAuto++;
+			work = true;
 		}
 	}
+	/*PlaybackProcess is not considered "work", because it adjusts itself to the
+	  amount of data processing on the next call. And calling more than 1000/s
+	  is not needed.
+	*/
 	if (PlaybackProcess() == false) {
 		g_ledspielState.playbackNext = true;
 	}
@@ -515,10 +595,13 @@ void PlayContinue(void) {
 		if (PlaySelectFilename(g_ledspielState.folderNum + FOLDER_OFFSET, g_ledspielState.animationFileNum, ".ani", filename, sizeof(filename))) {
 			printf("Selected %s\r\n", filename);
 			g_ledspielState.animation = true;
-			AnimationStartFile(filename, true);
+			AnimationStartFile(filename, g_ledspielState.animationRepeat);
+			g_ledspielState.animationRepeat = true; //now all manual selected animation repeat
+			work = true;
 		}
 	}
 	//AnimationProcess() is done in the main loop, as this needs to be done even without an SD card
+	return work;
 }
 
 #define LIGHT_SETPS 8
@@ -716,6 +799,68 @@ static void SimBatEmpty(void) {
 	printf("Simulate empty battery: %u\r\n", g_ledspielState.simEmpty);
 }
 
+static void CpuIdleCalc(void) {
+	g_ledspielState.cpuLoad1s = 100.0 - (float)g_ledspielState.ticksSleep1s * 100.0 / (float)F_CPU;
+	g_ledspielState.ticksSleep1s = 0;
+	g_ledspielState.cpuLoadCnt++;
+	if (g_ledspielState.cpuLoadCnt == 10) {
+		g_ledspielState.cpuLoadCnt = 0;
+		g_ledspielState.cpuLoad10s = 100.0 - (float)g_ledspielState.ticksSleep10s * 10.0 / (float)F_CPU;
+		g_ledspielState.ticksSleep10s = 0;
+	}
+}
+
+static void CpuIdlePrint(void) {
+	printf("CPU load 1s: %u%c, 10s: %u%c\r\n", g_ledspielState.cpuLoad1s, '%', g_ledspielState.cpuLoad10s, '%');
+}
+
+static void ProcessDebug(void) {
+	char input = Rs232GetChar();
+	if (input) {
+		printf("%c", input);
+	}
+	switch (input) {
+		case 'a': AudioTest(); break;
+		case 'b': JumpDfu(); break;
+		case 'c': ChargerState(); break;
+		case 'e': SimBatEmpty(); break;
+		case 'f': MatrixFrameTest(); break;
+		case 'h': MainMenu(); break;
+		case 'i': CpuIdlePrint(); break;
+		case 'l': ListFiles("/", "", 2); break;
+		case 'r': NVIC_SystemReset(); break;
+		case 't': BenchmarkSdcard(); break;
+		case 'u': UsbToggle(); break;
+		case 'y': BrightnessUp(); break;
+		case 'x': BrightnessDown(); break;
+		case '+': VolumeUp(); break;
+		case '-': VolumeDown(); break;
+		case '0' ... '9':
+		  g_ledspielState.folderNum = input - '0';
+		  g_ledspielState.folderUpdated = true;
+		  g_ledspielState.playbackFilesAuto = 0;
+		  break;
+		case 'A' ... 'F':
+		  g_ledspielState.folderNum = input - 'A' + 10;
+		  g_ledspielState.folderUpdated = true;
+		  g_ledspielState.playbackFilesAuto = 0;
+		  break;
+		case 'm':
+		  g_ledspielState.playbackNext = true;
+		  g_ledspielState.playbackFilesAuto = 0;
+		  break;
+		case 'n':
+		  g_ledspielState.animationNext = true;
+		  g_ledspielState.playbackFilesAuto = 0;
+		  break;
+		default: break;
+		if (g_ledspielState.usbEnabled) {
+			StorageCycle(input);
+		}
+		break;
+	}
+}
+
 void AppInit(void) {
 	LedsInit();
 	Led1Yellow();
@@ -789,6 +934,7 @@ static void AppCycle1s(void) {
 	LightMeasure();
 	StackSampleCheck();
 	BatteryControl();
+	CpuIdleCalc();
 	if (g_ledspielState.cyclePowerDown) {
 		g_ledspielState.cyclePowerDown--;
 	} else {
@@ -803,6 +949,7 @@ static void AppCycle1s(void) {
 //called every 10ms
 static void AppCycle10ms(void) {
 	LightAdjust();
+	ProcessDebug();
 }
 
 //static state keys
@@ -813,6 +960,7 @@ static void AppCycle10ms(void) {
 #define INPUT_MUSIC 0x40
 
 void AppCycle(void) {
+	bool work = false;
 	/*Intended bit meaning
 	  0: unused
 	  1: Next animation
@@ -835,57 +983,13 @@ void AppCycle(void) {
 		}
 		g_ledspielState.inputPrevious = keyInput;
 	}
-
-	char input = Rs232GetChar();
-	if (input) {
-		printf("%c", input);
-	}
-	switch (input) {
-		case 'h': MainMenu(); break;
-		case 'r': NVIC_SystemReset(); break;
-		case 'b': JumpDfu(); break;
-		case 'c': ChargerState(); break;
-		case 'e': SimBatEmpty(); break;
-		case 't': BenchmarkSdcard(); break;
-		case 'u': UsbToggle(); break;
-		case 'a': AudioTest(); break;
-		case 'l': ListFiles("/", "", 2); break;
-		case '+': VolumeUp(); break;
-		case '-': VolumeDown(); break;
-		case 'y': BrightnessUp(); break;
-		case 'x': BrightnessDown(); break;
-		case 'f': MatrixFrameTest(); break;
-		case '0' ... '9':
-		  g_ledspielState.folderNum = input - '0';
-		  g_ledspielState.folderUpdated = true;
-		  g_ledspielState.playbackFilesAuto = 0;
-		  break;
-		case 'A' ... 'F':
-		  g_ledspielState.folderNum = input - 'A' + 10;
-		  g_ledspielState.folderUpdated = true;
-		  g_ledspielState.playbackFilesAuto = 0;
-		  break;
-		case 'm':
-		  g_ledspielState.playbackNext = true;
-		  g_ledspielState.playbackFilesAuto = 0;
-		  break;
-		case 'n':
-		  g_ledspielState.animationNext = true;
-		  g_ledspielState.playbackFilesAuto = 0;
-		  break;
-		default: break;
-		if (g_ledspielState.usbEnabled) {
-			StorageCycle(input);
-		}
-		break;
-	}
 	if (g_ledspielState.usbEnabled) {
 		if (g_ledspielState.animation == false) {
 			AnimationStartRam(build_usbConnected_ani, build_usbConnected_ani_len, true);
 		}
-		StorageCycle(0);
+		work = StorageCycle(0);
 	} else {
-		PlayContinue();
+		work = PlayContinue();
 	}
 	if (g_ledspielState.frameTest == 0) {
 		if (AnimationProcess() == false) {
@@ -900,5 +1004,18 @@ void AppCycle(void) {
 	if (g_ledspielState.cycle10ms < tick) {
 		g_ledspielState.cycle10ms += 10;
 		AppCycle10ms();
+	}
+	if (!work) {
+		//This reduces the CPU load and therefore saves power
+		Timer32BitInit(0);
+		Timer32BitStart();
+		__WFI();
+		uint32_t idle = Timer32BitGet();
+#if (F_CPU > 84000000)
+		idle *= 2;
+#endif
+		Timer32BitDeinit();
+		g_ledspielState.ticksSleep1s += idle;
+		g_ledspielState.ticksSleep10s += idle;
 	}
 }

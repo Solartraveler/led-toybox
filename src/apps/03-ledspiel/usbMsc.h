@@ -12,8 +12,9 @@ void StorageInit(void);
 */
 bool StorageCycle(char input);
 
-
+//Connects the USB again after StorageStop has been called
 void StorageStart(void);
 
+//Disconnects the USB
 void StorageStop(void);
 

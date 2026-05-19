@@ -52,6 +52,7 @@ typedef struct {
 	uint32_t bytesGenerated; //number of decoded samples generated (converted to 8bit, so equal to output bytes)
 	bool play; //if true, the file is not at the end yet (or the user did not select stop) and f is valid
 	bool needData; //if true, decoding function should refill inBuffer
+	uint32_t lastNsamples; //result of the last decoding output, used for CPU usage optimizations, so we don't do busy waiting in the output function
 	uint32_t sampleRate; //in [Hz]
 	uint32_t bitRate; //in [Hz]
 	uint32_t channels; //1 = mono, 2 = stereo
@@ -214,6 +215,7 @@ enum mad_flow MadOutput(void *data, struct mad_header const *header, struct mad_
 	if (AudioBufferFreeGet() < nsamples) {
 		//We simply assume we get the same amount of data next time, so it should fit into the buffer without waiting
 		//printf("Only %u bytes free in FIFO\r\n", (unsigned int)SeqFifoFree());
+		g_playerState.lastNsamples = nsamples;
 		return MAD_FLOW_STOP;
 	}
 	//printf("Completed output\r\n");
@@ -237,6 +239,7 @@ bool PlaybackStart(const char * filename, float volume) {
 	g_playerState.play = true;
 	g_playerState.needData = true;
 	g_playerState.volume = volume;
+	g_playerState.lastNsamples = 0;
 	mad_decoder_init(&g_playerState.madDecoder, NULL, MadInput, MadHeader, NULL, MadOutput, MadError, 0 /* message */);
 	//This would play, but would block until the mp3 is finished (or the watchdog bites us):
 	//mad_decoder_run(&g_playerState.madDecoder, MAD_DECODER_MODE_SYNC);
@@ -277,6 +280,11 @@ bool PlaybackProcess(void) {
 			Timer32BitStop();
 			PlaybackEvaluatePerformance();
 			AudioStop();
+			return true;
+		}
+	} else {
+		if (AudioBufferFreeGet() < g_playerState.lastNsamples) {
+			//Now Output waiting" is reported as 0 cycles, but the output buffer is not used as much as possible
 			return true;
 		}
 	}
