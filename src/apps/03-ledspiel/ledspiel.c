@@ -88,18 +88,21 @@ typedef struct {
 	uint8_t frameTest;
 	uint8_t filesystem; //0 = mounted, card working
 	uint32_t inputPrevious;
-	uint32_t folderNum;
+	uint32_t inputNotChanged; //Time in [10ms]
+	uint32_t folderNum; //folder to be selected 0...15
 	uint16_t animationFileNum;
 	uint16_t playbackFileNum;
-	uint16_t playbackFilesAuto; //number of files played since last user input
-	bool animationNext;
-	bool playbackNext;
-	bool folderUpdated;
-	uint32_t ticksSleep1s;
-	uint32_t ticksSleep10s;
-	uint8_t cpuLoad1s;
-	uint8_t cpuLoadCnt;
-	uint8_t cpuLoad10s;
+	uint16_t playbackFilesAuto; //number of files played since last user input, playback of next file is only done if value is < PLAYBACK_FILES_AUTO_MAX
+	bool animationNext; //key or serial debug requests the next animation
+	bool playbackNext; //key or serial debug requests the next mp3
+	bool folderUpdated; //key or serial debug requests playing of an other folder
+	uint32_t ticksSleep1s; //for performance measurement only
+	uint32_t ticksSleep10s; //for performance measurement only
+	uint8_t cpuLoad1s; //for performance measurement only
+	uint8_t cpuLoadCnt; //for performance measurement only
+	uint8_t cpuLoad10s; //for performance measurement only
+	uint32_t mainLoopCycles; //for performance measurement only
+	uint32_t mainLoopCycles1s; //for performance measurement only
 } ledspielState_t;
 
 ledspielState_t g_ledspielState;
@@ -120,6 +123,7 @@ void MainMenu(void) {
 	printf("n: Next animation\r\n");
 	printf("p: Toggle print USB performance\r\n");
 	printf("r: Reboot with reset controller\r\n");
+	printf("s: Stop playback\r\n");
 	printf("t: Measure storage performance\r\n");
 	printf("u: Toggle USB device\r\n");
 	printf("w: Toggle USB write protection\r\n");
@@ -234,9 +238,23 @@ void FrameTest(uint8_t id) {
 	}
 }
 
+static void AppPlaybackStop(bool autoplayNext) {
+	PlaybackStop();
+	g_ledspielState.playing = false;
+	if (!autoplayNext) {
+		g_ledspielState.playbackFilesAuto = PLAYBACK_FILES_AUTO_MAX;
+	}
+}
+
+static void AppAnimationStop(void) {
+	AnimationStop();
+	g_ledspielState.animation = false;
+}
+
 static void PrepareOtherProgam(void) {
-	Led2Off();
 	//first all peripheral clocks should be disabled
+	AppAnimationStop();
+	AppPlaybackStop(false);
 	UsbStop(); //stops USB clock
 	Rs232Flush();
 	Rs232Stop(); //stops UART1 clock
@@ -286,13 +304,18 @@ void BenchmarkSdcard(void) {
 }
 
 void UsbToggle(void) {
-	if (g_ledspielState.usbEnabled == false) {
-		PlaybackStop();
+	g_ledspielState.usbEnabled = !g_ledspielState.usbEnabled;
+	if (g_ledspielState.usbEnabled) {
+		AppPlaybackStop(false);
+		AppAnimationStop();
+		FilesystemUnmount();
+		g_ledspielState.filesystem = 3;
 		StorageInit();
 	} else {
 		StorageStop();
+		g_ledspielState.filesystem = FilesystemMount();
+		g_ledspielState.folderUpdated = true;
 	}
-	g_ledspielState.usbEnabled = !g_ledspielState.usbEnabled;
 }
 
 #define AUDIO_SAMPLERATE 44100
@@ -310,8 +333,7 @@ void UsbToggle(void) {
 #define AUDIO_SAWTOOTH
 
 void AudioTest(void) {
-	PlaybackStop();
-	g_ledspielState.playing = false;
+	AppPlaybackStop(false);
 	RAM_SUPPORTS_DMA static uint16_t data[AUDIO_TEST_SIZE];
 	for (uint32_t i = 0; i < AUDIO_TEST_SIZE; i++) {
 #ifdef AUDIO_SAWTOOTH
@@ -381,20 +403,36 @@ void ListFiles(const char * directory, const char * prefix, uint32_t recursive) 
 #define SORT_CHARS_MAX 3
 
 int PlaySelectCompare(const void * pA, const void * pB) {
-	const char * cA = (const char *)pA;
-	const char * cB = (const char *)pB;
-	for (uint32_t i = 0; i < SORT_CHARS_MAX; i++) {
-		char a = *cA;
-		char b = *cB;
-		if (a > b) {
-			return 1;
-		} else if (a < b) {
-			return -1;
-		}
-		cA++;
-		cB++;
+	return memcmp(pA, pB, SORT_CHARS_MAX);
+}
+
+static void memswp(void * pA, void * pB, size_t elementSize) {
+	uint8_t * pua = (uint8_t *)pA;
+	uint8_t * pub = (uint8_t *)pB;
+	for (size_t i = 0; i < elementSize; i++) {
+		uint8_t tmp = *pua;
+		*pua = *pub;
+		*pub = tmp;
+		pua++;
+		pub++;
 	}
-	return 0;
+}
+
+//same function as qsort, just slower (and less program memory consuming)
+void bubblesort(void * data, size_t elements, size_t elementSize,  int (*compare)(const void * a, const void * b)) {
+	bool sorted = false;
+	while ((elements > 1) && (!sorted)) {
+		sorted = true;
+		for (size_t i = 0; i < (elements - 1); i++) {
+			void * pA = (void *) ((uintptr_t)data + i * elementSize);
+			void * pB = (void *) ((uintptr_t)data + (i + 1) * elementSize);
+			if (compare(pA, pB) > 0) {
+				memswp(pA, pB, elementSize);
+				sorted = false;
+			}
+		}
+		elements--;
+	}
 }
 
 /*Selects the filenum (0 based) from the directory dirnum.
@@ -435,7 +473,9 @@ bool PlaySelectFilename(uint32_t dirnum, uint32_t filenum, const char * fileEndi
 		return false;
 	}
 	//2. okay, sort the files
-	qsort(toSort, numFound, SORT_CHARS_MAX, &PlaySelectCompare);
+	//qsort would work, but it takes about 1.6KiB of program memory
+	//qsort(toSort, numFound, SORT_CHARS_MAX, &PlaySelectCompare);
+	bubblesort(toSort, numFound, SORT_CHARS_MAX, &PlaySelectCompare);
 #if 0
 	printf("Sorted\r\n");
 	for (uint32_t i = 0; i < numFound; i++) {
@@ -545,17 +585,14 @@ bool PlayContinue(void) {
 		g_ledspielState.folderUpdated = false;
 		g_ledspielState.animationFileNum = 0;
 		g_ledspielState.playbackFileNum = 0;
-		PlaybackStop();
-		g_ledspielState.playing = false;
-		AnimationStop();
-		g_ledspielState.animation = false;
+		AppPlaybackStop(true);
+		AppAnimationStop();
 		g_ledspielState.animationRepeat = false; //so the first animation is played only once
 	}
 
 	if (g_ledspielState.playbackNext) {
 		g_ledspielState.playbackNext = false;
-		PlaybackStop();
-		g_ledspielState.playing = false;
+		AppPlaybackStop(true);
 		g_ledspielState.playbackFileNum++;
 		uint32_t num = PlayCountFiles(g_ledspielState.folderNum + FOLDER_OFFSET, ".mp3");
 		if (g_ledspielState.playbackFileNum >= num) {
@@ -564,8 +601,7 @@ bool PlayContinue(void) {
 	}
 	if (g_ledspielState.animationNext) {
 		g_ledspielState.animationNext = false;
-		AnimationStop();
-		g_ledspielState.animation = false;
+		AppAnimationStop();
 		g_ledspielState.animationFileNum++;
 		uint32_t num = PlayCountFiles(g_ledspielState.folderNum + FOLDER_OFFSET, ".ani");
 		if (g_ledspielState.animationFileNum >= num) {
@@ -587,8 +623,10 @@ bool PlayContinue(void) {
 	  amount of data processing on the next call. And calling more than 1000/s
 	  is not needed.
 	*/
-	if (PlaybackProcess() == false) {
-		g_ledspielState.playbackNext = true;
+	if (g_ledspielState.playing) {
+		if (PlaybackProcess() == false) {
+			g_ledspielState.playbackNext = true;
+		}
 	}
 	if (g_ledspielState.animation == false) {
 		char filename[128];
@@ -651,7 +689,7 @@ static void PrintTemperature(int32_t temperature) {
 static void BatEmptyPrepare(void) {
 	g_ledspielState.empty = true;
 	g_ledspielState.cyclePowerDown = 15;
-	PlaybackStop();
+	AppPlaybackStop(false);
 	if (g_ledspielState.filesystem == 0) {
 		FilesystemUnmount();
 		g_ledspielState.filesystem = 3;
@@ -664,7 +702,7 @@ static void BatteryControl(void) {
 	/*If there is no battery connected, parasitic charge builds up, resulting in a
 	  higher voltage on the first measurement. Therfore we measure twice if charging is disabled.
 	  Typically the MCP1640 needs 0.65V to start up.
-	  There is a voltage offset of about between the multimeter and the MCU because of D84.
+	  There is a voltage offset between the multimeter and the MCU because of D84.
 	  Measured values if the charger is disabled:
 	  By MCU:      By multimeter:
 	  0.48V-0.50V, 0.48V-0.52V               No battery is connected -> Must be running on USB
@@ -731,7 +769,7 @@ static void BatteryControl(void) {
 					g_ledspielState.chargeTryReason = 4;
 				}
 				ChargerControl(false);
-				if (cV < 2000) {
+				if (cV < 1900) { //This is the value estimated if one battery is full and one close to 0.9V
 					if (g_ledspielState.empty == false) {
 						printf("Battery empty (%umV)\r\n", (unsigned int)cV2);
 						BatEmptyPrepare();
@@ -803,6 +841,8 @@ static void CpuIdleCalc(void) {
 	g_ledspielState.cpuLoad1s = 100.0 - (float)g_ledspielState.ticksSleep1s * 100.0 / (float)F_CPU;
 	g_ledspielState.ticksSleep1s = 0;
 	g_ledspielState.cpuLoadCnt++;
+	g_ledspielState.mainLoopCycles1s = g_ledspielState.mainLoopCycles;
+ 	g_ledspielState.mainLoopCycles = 0;
 	if (g_ledspielState.cpuLoadCnt == 10) {
 		g_ledspielState.cpuLoadCnt = 0;
 		g_ledspielState.cpuLoad10s = 100.0 - (float)g_ledspielState.ticksSleep10s * 10.0 / (float)F_CPU;
@@ -812,6 +852,7 @@ static void CpuIdleCalc(void) {
 
 static void CpuIdlePrint(void) {
 	printf("CPU load 1s: %u%c, 10s: %u%c\r\n", g_ledspielState.cpuLoad1s, '%', g_ledspielState.cpuLoad10s, '%');
+	printf("Main loop cycles 1s: %u\r\n", (unsigned int)g_ledspielState.mainLoopCycles1s);
 }
 
 static void ProcessDebug(void) {
@@ -829,6 +870,7 @@ static void ProcessDebug(void) {
 		case 'i': CpuIdlePrint(); break;
 		case 'l': ListFiles("/", "", 2); break;
 		case 'r': NVIC_SystemReset(); break;
+		case 's': AppPlaybackStop(false); break;
 		case 't': BenchmarkSdcard(); break;
 		case 'u': UsbToggle(); break;
 		case 'y': BrightnessUp(); break;
@@ -858,6 +900,50 @@ static void ProcessDebug(void) {
 			StorageCycle(input);
 		}
 		break;
+	}
+}
+
+//static state keys
+#define INPUT_FOLDER 0x3C
+//push button
+#define INPUT_ANIMATION 0x02
+//push button
+#define INPUT_MUSIC 0x40
+
+static void ProcessKeys(void) {
+	/*Intended bit meaning
+	  0: unused
+	  1: Next animation
+	  2...5: Folder selection
+	  6: Next music
+	*/
+	uint32_t keyInput = KeyInputGet();
+	if (keyInput != g_ledspielState.inputPrevious) {
+		printf("Key states: %x\r\n", (unsigned int)keyInput);
+		if ((keyInput & INPUT_FOLDER) != (g_ledspielState.inputPrevious & INPUT_FOLDER)) {
+			g_ledspielState.folderNum = (keyInput & INPUT_FOLDER) >> 2;
+			g_ledspielState.folderUpdated = true;
+			g_ledspielState.playbackFilesAuto = 0;
+		}
+		if (keyInput & INPUT_ANIMATION) {
+			g_ledspielState.animationNext = true;
+			g_ledspielState.playbackFilesAuto = 0;
+		}
+		if (keyInput & INPUT_MUSIC) {
+			g_ledspielState.playbackNext = true;
+			g_ledspielState.playbackFilesAuto = 0;
+		}
+		g_ledspielState.inputPrevious = keyInput;
+		g_ledspielState.inputNotChanged = 0;
+	} else if (g_ledspielState.inputNotChanged < 0xFFFFFFFF) {
+		g_ledspielState.inputNotChanged++;
+		if (g_ledspielState.inputNotChanged == 300) { //3s
+			if ((keyInput & INPUT_ANIMATION) && (keyInput & INPUT_MUSIC)) {
+				UsbToggle();
+			} else if (keyInput & INPUT_MUSIC) {
+				AppPlaybackStop(false);
+			}
+		}
 	}
 }
 
@@ -941,7 +1027,6 @@ static void AppCycle1s(void) {
 		printf("Powering down\r\n");
 		Rs232Flush();
 		FlashDisable();
-		MatrixDisable();
 		PowerOff(); //will not return
 	}
 }
@@ -950,42 +1035,15 @@ static void AppCycle1s(void) {
 static void AppCycle10ms(void) {
 	LightAdjust();
 	ProcessDebug();
+	ProcessKeys();
 }
-
-//static state keys
-#define INPUT_FOLDER 0x3C
-//push button
-#define INPUT_ANIMATION 0x02
-//push button
-#define INPUT_MUSIC 0x40
 
 void AppCycle(void) {
 	bool work = false;
-	/*Intended bit meaning
-	  0: unused
-	  1: Next animation
-	  2...5: Folder selection
-	  6: Next music
-	*/
-	uint32_t keyInput = KeyInputGet();
-	if (keyInput != g_ledspielState.inputPrevious) {
-		printf("Key states: %x\r\n", (unsigned int)keyInput);
-		g_ledspielState.playbackFilesAuto = 0;
-		if ((keyInput & INPUT_FOLDER) != (g_ledspielState.inputPrevious & INPUT_FOLDER)) {
-			g_ledspielState.folderNum = (keyInput & INPUT_FOLDER) >> 2;
-			g_ledspielState.folderUpdated = true;
-		}
-		if (keyInput & INPUT_ANIMATION) {
-			g_ledspielState.animationNext = true;
-		}
-		if (keyInput & INPUT_MUSIC) {
-			g_ledspielState.playbackNext = true;
-		}
-		g_ledspielState.inputPrevious = keyInput;
-	}
 	if (g_ledspielState.usbEnabled) {
 		if (g_ledspielState.animation == false) {
 			AnimationStartRam(build_usbConnected_ani, build_usbConnected_ani_len, true);
+			g_ledspielState.animation = true;
 		}
 		work = StorageCycle(0);
 	} else {
@@ -1010,6 +1068,9 @@ void AppCycle(void) {
 		Timer32BitInit(0);
 		Timer32BitStart();
 		__WFI();
+		/*Failure in calculation: Servicing the ISR routine is counted as idle,
+		  but there is not much done in the ISRs, as long as USB is disabled.
+		*/
 		uint32_t idle = Timer32BitGet();
 #if (F_CPU > 84000000)
 		idle *= 2;
@@ -1018,4 +1079,5 @@ void AppCycle(void) {
 		g_ledspielState.ticksSleep1s += idle;
 		g_ledspielState.ticksSleep10s += idle;
 	}
+	g_ledspielState.mainLoopCycles++;
 }

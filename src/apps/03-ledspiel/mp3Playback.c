@@ -224,7 +224,11 @@ enum mad_flow MadOutput(void *data, struct mad_header const *header, struct mad_
 
 bool PlaybackStart(const char * filename, float volume) {
 	PlaybackStop();
-	memset(&g_playerState, 0, sizeof(g_playerState)); //because the memory is not initialized by the startup code
+	memset(&g_playerState, 0, sizeof(g_playerState)); //forget anything from previous playings
+	//otherwise we hear fractions of the previous playing
+	for (size_t i = 0; i < OUTPUT_BUFFER_ELEMENTS; i++) {
+		g_dacFifoBuffer[i] = AUIDO_VALUE_MAX / 2; //0 would result in a "knock" sound
+	}
 
 	if (f_open(&g_playerState.f, filename, FA_READ) != FR_OK) {
 		printf("Error, could not open file\r\n");
