@@ -1012,6 +1012,7 @@ void AppInit(void) {
 		}
 	}
 	Rs232Flush();
+	Rs232GetChar(); //clear possible junk data
 }
 
 //called every second
