@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<HeeksCAD_Document>
+    <Program machine="LinuxCNC" output_file="/tmp/heekscnc-yQQoD3.ngc" output_file_name_follows_data_file_name="1" program="" units="1" ProgramPathControlMode="3" ProgramMotionBlendingTolerance="0.0001" ProgramNaiveCamTolerance="0.0001" title_from_id="1" id="1">
+        <Tools>
+            <Tool title="3 mm Taschen Fraeser" tool_number="1" id="5">
+                <params diameter="3" tool_length_offset="127" automatically_generate_title="1" material="1" type="slot_cutter" corner_radius="0" flat_radius="0" cutting_edge_angle="0" cutting_edge_height="12" />
+            </Tool>
+            <Tool title="4 mm Bohrer" tool_number="2" id="6">
+                <params diameter="4" tool_length_offset="100" automatically_generate_title="1" material="1" type="drill" corner_radius="0" flat_radius="0" cutting_edge_angle="59" cutting_edge_height="50.8" />
+            </Tool>
+            <Tool title="6 mm Taschen Fraeser" tool_number="3" id="7">
+                <params diameter="6" tool_length_offset="100" automatically_generate_title="1" material="1" type="slot_cutter" corner_radius="0" flat_radius="0" cutting_edge_angle="0" cutting_edge_height="30" />
+            </Tool>
+        </Tools>
+        <Patterns />
+        <Surfaces />
+        <Stocks />
+        <Operations />
+        <nccode edited="0" id="1" />
+    </Program>
+    <Sketch title="Zeichnung" title_from_id="1" id="1">
+        <Line col="0" sx="-20" sy="-20" sz="0" ex="-20" ey="20" ez="0" id="1" />
+        <Line col="0" sx="-20" sy="20" sz="0" ex="20" ey="20" ez="0" id="2" />
+        <Line col="0" sx="20" sy="20" sz="0" ex="20" ey="-20" ez="0" id="3" />
+        <Line col="0" sx="20" sy="-20" sz="0" ex="-20" ey="-20" ez="0" id="4" />
+        <Arc cx="0" cy="1.50797528e-26" cz="0" ax="0" ay="0" az="1" col="0" sx="1.5" sy="1.50797528e-26" sz="0" ex="-1.5" ey="1.8369702e-16" ez="0" id="5" />
+        <Arc cx="0" cy="1.50797528e-26" cz="0" ax="0" ay="0" az="1" col="0" sx="-1.5" sy="1.8369702e-16" sz="0" ex="1.5" ey="-3.6739404e-16" ez="0" id="6" />
+        <Arc cx="8.8817842e-16" cy="10" cz="0" ax="0" ay="0" az="1" col="0" sx="1.5" sy="10" sz="0" ex="-1.5" ey="10" ez="0" id="7" />
+        <Arc cx="8.8817842e-16" cy="10" cz="0" ax="0" ay="0" az="1" col="0" sx="-1.5" sy="10" sz="0" ex="1.5" ey="10" ez="0" id="8" />
+        <Arc cx="5.773502692" cy="10" cz="0" ax="0" ay="0" az="1" col="0" sx="7.273502692" sy="10" sz="0" ex="4.273502692" ey="10" ez="0" id="9" />
+        <Arc cx="5.773502692" cy="10" cz="0" ax="0" ay="0" az="1" col="0" sx="4.273502692" sy="10" sz="0" ex="7.273502692" ey="10" ez="0" id="10" />
+        <Arc cx="-5.77350269" cy="10" cz="0" ax="0" ay="0" az="1" col="0" sx="-4.27350269" sy="10" sz="0" ex="-7.27350269" ey="10" ez="0" id="11" />
+        <Arc cx="-5.77350269" cy="10" cz="0" ax="0" ay="0" az="1" col="0" sx="-7.27350269" sy="10" sz="0" ex="-4.27350269" ey="10" ez="0" id="12" />
+        <Arc cx="5.773502692" cy="1.50797528e-26" cz="0" ax="0" ay="0" az="1" col="0" sx="7.273502692" sy="1.50797528e-26" sz="0" ex="4.273502692" ey="1.8369702e-16" ez="0" id="13" />
+        <Arc cx="5.773502692" cy="1.50797528e-26" cz="0" ax="0" ay="0" az="1" col="0" sx="4.273502692" sy="1.8369702e-16" sz="0" ex="7.273502692" ey="-3.6739404e-16" ez="0" id="14" />
+        <Arc cx="-5.77350269" cy="1.50797528e-26" cz="0" ax="0" ay="0" az="1" col="0" sx="-4.27350269" sy="1.50797528e-26" sz="0" ex="-7.27350269" ey="1.8369702e-16" ez="0" id="15" />
+        <Arc cx="-5.77350269" cy="1.50797528e-26" cz="0" ax="0" ay="0" az="1" col="0" sx="-7.27350269" sy="1.8369702e-16" sz="0" ex="-4.27350269" ey="-3.6739404e-16" ez="0" id="16" />
+        <Arc cx="11.547005384" cy="1.50797528e-26" cz="0" ax="0" ay="0" az="1" col="0" sx="13.047005384" sy="1.50797528e-26" sz="0" ex="10.047005384" ey="1.8369702e-16" ez="0" id="17" />
+        <Arc cx="11.547005384" cy="1.50797528e-26" cz="0" ax="0" ay="0" az="1" col="0" sx="10.047005384" sy="1.8369702e-16" sz="0" ex="13.047005384" ey="-3.6739404e-16" ez="0" id="18" />
+        <Arc cx="-11.5470054" cy="1.50797528e-26" cz="0" ax="0" ay="0" az="1" col="0" sx="-10.0470054" sy="1.50797528e-26" sz="0" ex="-13.0470054" ey="1.8369702e-16" ez="0" id="19" />
+        <Arc cx="-11.5470054" cy="1.50797528e-26" cz="0" ax="0" ay="0" az="1" col="0" sx="-13.0470054" sy="1.8369702e-16" sz="0" ex="-10.0470054" ey="-3.6739404e-16" ez="0" id="20" />
+        <Arc cx="-8.66025404" cy="5" cz="0" ax="0" ay="0" az="1" col="0" sx="-7.16025404" sy="5" sz="0" ex="-10.160254" ey="5" ez="0" id="21" />
+        <Arc cx="-8.66025404" cy="5" cz="0" ax="0" ay="0" az="1" col="0" sx="-10.160254" sy="5" sz="0" ex="-7.16025404" ey="5" ez="0" id="22" />
+        <Arc cx="-2.88675135" cy="5" cz="0" ax="0" ay="0" az="1" col="0" sx="-1.38675135" sy="5" sz="0" ex="-4.38675135" ey="5" ez="0" id="23" />
+        <Arc cx="-2.88675135" cy="5" cz="0" ax="0" ay="0" az="1" col="0" sx="-4.38675135" sy="5" sz="0" ex="-1.38675135" ey="5" ez="0" id="24" />
+        <Arc cx="2.886751346" cy="5" cz="0" ax="0" ay="0" az="1" col="0" sx="4.386751346" sy="5" sz="0" ex="1.386751346" ey="5" ez="0" id="25" />
+        <Arc cx="2.886751346" cy="5" cz="0" ax="0" ay="0" az="1" col="0" sx="1.386751346" sy="5" sz="0" ex="4.386751346" ey="5" ez="0" id="26" />
+        <Arc cx="8.660254038" cy="5" cz="0" ax="0" ay="0" az="1" col="0" sx="10.160254038" sy="5" sz="0" ex="7.160254038" ey="5" ez="0" id="27" />
+        <Arc cx="8.660254038" cy="5" cz="0" ax="0" ay="0" az="1" col="0" sx="7.160254038" sy="5" sz="0" ex="10.160254038" ey="5" ez="0" id="28" />
+        <Arc cx="5.773502692" cy="-10" cz="0" ax="0" ay="0" az="1" col="0" sx="7.273502692" sy="-10" sz="0" ex="4.273502692" ey="-10" ez="0" id="29" />
+        <Arc cx="5.773502692" cy="-10" cz="0" ax="0" ay="0" az="1" col="0" sx="4.273502692" sy="-10" sz="0" ex="7.273502692" ey="-10" ez="0" id="30" />
+        <Arc cx="0" cy="-10" cz="0" ax="0" ay="0" az="1" col="0" sx="1.5" sy="-10" sz="0" ex="-1.5" ey="-10" ez="0" id="31" />
+        <Arc cx="0" cy="-10" cz="0" ax="0" ay="0" az="1" col="0" sx="-1.5" sy="-10" sz="0" ex="1.5" ey="-10" ez="0" id="32" />
+        <Arc cx="-5.77350269" cy="-10" cz="0" ax="0" ay="0" az="1" col="0" sx="-4.27350269" sy="-10" sz="0" ex="-7.27350269" ey="-10" ez="0" id="33" />
+        <Arc cx="-5.77350269" cy="-10" cz="0" ax="0" ay="0" az="1" col="0" sx="-7.27350269" sy="-10" sz="0" ex="-4.27350269" ey="-10" ez="0" id="34" />
+        <Arc cx="-8.66025404" cy="-5" cz="0" ax="0" ay="0" az="1" col="0" sx="-7.16025404" sy="-5" sz="0" ex="-10.160254" ey="-5" ez="0" id="35" />
+        <Arc cx="-8.66025404" cy="-5" cz="0" ax="0" ay="0" az="1" col="0" sx="-10.160254" sy="-5" sz="0" ex="-7.16025404" ey="-5" ez="0" id="36" />
+        <Arc cx="-2.88675135" cy="-5" cz="0" ax="0" ay="0" az="1" col="0" sx="-1.38675135" sy="-5" sz="0" ex="-4.38675135" ey="-5" ez="0" id="37" />
+        <Arc cx="-2.88675135" cy="-5" cz="0" ax="0" ay="0" az="1" col="0" sx="-4.38675135" sy="-5" sz="0" ex="-1.38675135" ey="-5" ez="0" id="38" />
+        <Arc cx="2.886751346" cy="-5" cz="0" ax="0" ay="0" az="1" col="0" sx="4.386751346" sy="-5" sz="0" ex="1.386751346" ey="-5" ez="0" id="39" />
+        <Arc cx="2.886751346" cy="-5" cz="0" ax="0" ay="0" az="1" col="0" sx="1.386751346" sy="-5" sz="0" ex="4.386751346" ey="-5" ez="0" id="40" />
+        <Arc cx="8.660254038" cy="-5" cz="0" ax="0" ay="0" az="1" col="0" sx="10.160254038" sy="-5" sz="0" ex="7.160254038" ey="-5" ez="0" id="41" />
+        <Arc cx="8.660254038" cy="-5" cz="0" ax="0" ay="0" az="1" col="0" sx="7.160254038" sy="-5" sz="0" ex="10.160254038" ey="-5" ez="0" id="42" />
+    </Sketch>
+</HeeksCAD_Document>
