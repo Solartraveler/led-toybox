@@ -4,7 +4,7 @@
 
 Add some RGB LEDs in a box with sound. Fun for kids.
 
-![alt text](img/ledspiel-rendered.jpg "PCB rendered")
+![alt text](img/ledspiel-front.jpg "Box in blue case")
 
 ## Features
 
@@ -22,17 +22,36 @@ Add some RGB LEDs in a box with sound. Fun for kids.
 
 - Slow charge over USB (~80mA). Can be disabled for non rechargeable batteries.
 
-- SD card for storing sound and LED sequences
+- SD card for storing sound (mp3 files) and LED sequences
 
-- SD card data exchange and firmware upload over USB
+- SD card file exchange and firmware upload over USB
 
 - The STM32F405 MCU is fast enough for mp3 decoding
 
-- Costs for all parts is ~90€.
+- Costs for all parts is ~95€.
 
 ## Status
 
+The PCB is soldered, the case is complete, the software for the toy works, but is incomplete.
+
+Two push buttons are on the left side, if one is pressed during power up, the device enters DFU firmware download mode.
+
+Four switches are there for selecting songs.
+
+Some animations are available.
+
+Missing featues:
+
+- Data exchange over USB mass storage is slow and only working in the Device -> PC direction (read only drive).
+
+- The IR receiver is currently unused.
+
+## History
+
+Planning...
+
+![alt text](img/ledspiel-rendered.jpg "PCB rendered")
+
+Soldering and debugging...
+
 ![alt text](img/ledspiel-debug.jpg "PCB with debug connection")
-
-
-The PCB is soldered. The case is missing.
