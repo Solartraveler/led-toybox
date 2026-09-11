@@ -9,6 +9,7 @@ SPDX-License-Identifier: BSD-3-Clause
 
 #include "ledspiellib/boxusb.h"
 
+#include "ledspiellib/rs232debug.h"
 #include "main.h"
 #include "usbd_core.h"
 #include "usb.h"
@@ -23,6 +24,8 @@ usbd_device * g_pUsbDev;
 
 //must be 4byte aligned
 static uint32_t g_usbBuffer[USB_BUFFERSIZE_BYTES / sizeof(uint32_t)];
+
+static uint8_t g_usbLockLevel; //protected by the disabled ISR itself
 
 __weak void UsbIrqOnEnter(void) {
 }
@@ -39,6 +42,7 @@ void OTG_FS_IRQHandler(void) {
 int32_t UsbStartAdv(usbd_device * usbDev, usbd_cfg_callback configCallback,
  usbd_ctl_callback controlCallback, usbd_dsc_callback descriptorCallback,
  extraInitFunc_t extraInit) {
+	g_usbLockLevel = 0;
 	g_pUsbDev = usbDev;
 	GPIO_InitTypeDef GPIO_InitStruct = {0};
 	GPIO_InitStruct.Pin = GPIO_PIN_11 | GPIO_PIN_12;
@@ -69,16 +73,23 @@ int32_t UsbStartAdv(usbd_device * usbDev, usbd_cfg_callback configCallback,
 
 	usbd_enable(g_pUsbDev, true);
 	uint32_t laneState = usbd_connect(g_pUsbDev, true);
+	HAL_NVIC_SetPriority(OTG_FS_IRQn, 12, 0);
 	NVIC_EnableIRQ(OTG_FS_IRQn);
 	return laneState;
 }
 
 void UsbLock(void) {
 	NVIC_DisableIRQ(OTG_FS_IRQn);
+	g_usbLockLevel++;
 }
 
 void UsbUnlock(void) {
-	NVIC_EnableIRQ(OTG_FS_IRQn);
+	if (g_usbLockLevel) {
+		g_usbLockLevel--;
+	}
+	if (g_usbLockLevel == 0) {
+		NVIC_EnableIRQ(OTG_FS_IRQn);
+	}
 }
 
 void UsbStop(void) {
@@ -86,11 +97,19 @@ void UsbStop(void) {
 		usbd_connect(g_pUsbDev, false);
 		usbd_enable(g_pUsbDev, false);
 		HAL_Delay(10); //let the USB process disconnection interrupts
-		NVIC_DisableIRQ(OTG_FS_IRQn); //if this test is called a second time
+		NVIC_DisableIRQ(OTG_FS_IRQn);
 		__HAL_RCC_USB_OTG_FS_CLK_DISABLE();
 		g_pUsbDev = NULL;
 	}
 }
 
+static USB_OTG_GlobalTypeDef * const OTG = (void*)(USB_OTG_FS_PERIPH_BASE + USB_OTG_GLOBAL_BASE);
 
+void UsbRxLvlIsrDisable(void) {
+	OTG->GINTMSK &= ~USB_OTG_GINTMSK_RXFLVLM;
+	OTG->GINTSTS = USB_OTG_GINTSTS_RXFLVL;
+}
 
+void UsbRxLvlIsrEnable(void) {
+	OTG->GINTMSK |= USB_OTG_GINTMSK_RXFLVLM;
+}

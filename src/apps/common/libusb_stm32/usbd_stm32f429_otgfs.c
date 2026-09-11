@@ -17,6 +17,7 @@
 #include <stdbool.h>
 #include "stm32_compat.h"
 #include "usb.h"
+#include "ledspiellib/rs232debug.h"
 
 #if defined(USBD_STM32F429FS)
 
@@ -396,7 +397,7 @@ static void evt_poll(usbd_device *dev, usbd_evt_callback callback) {
                     break;
                 }
             }
-        } else if (_t & USB_OTG_GINTSTS_RXFLVL) {
+        } else if (_t & USB_OTG_GINTSTS_RXFLVL & OTG->GINTMSK) {
             _t = OTG->GRXSTSR;
             ep = _t & USB_OTG_GRXSTSP_EPNUM;
             switch (_FLD2VAL(USB_OTG_GRXSTSP_PKTSTS, _t)) {
@@ -433,7 +434,9 @@ static void evt_poll(usbd_device *dev, usbd_evt_callback callback) {
             /* no more supported events */
             return;
         }
-        callback(dev, evt, ep);
+        if (!callback(dev, evt, ep)) {
+            return;
+        }
     }
 }
 

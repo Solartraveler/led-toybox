@@ -19,7 +19,7 @@
 
 #define _MIN(a, b) ((a) < (b)) ? (a) : (b)
 
-static void usbd_process_ep0 (usbd_device *dev, uint8_t event, uint8_t ep);
+static bool usbd_process_ep0 (usbd_device *dev, uint8_t event, uint8_t ep);
 
 /** \brief Resets USB device state
  * \param dev pointer to usb device
@@ -320,7 +320,7 @@ static void usbd_process_eprx(usbd_device *dev, uint8_t ep) {
  * \param dev usb device
  * \param event endpoint event
  */
-static void usbd_process_ep0 (usbd_device *dev, uint8_t event, uint8_t ep) {
+static bool usbd_process_ep0 (usbd_device *dev, uint8_t event, uint8_t ep) {
     switch (event) {
     case usbd_evt_epsetup:
         /* force switch to setup state */
@@ -336,6 +336,7 @@ static void usbd_process_ep0 (usbd_device *dev, uint8_t event, uint8_t ep) {
     default:
         break;
     }
+    return true;
 }
 
 
@@ -344,7 +345,8 @@ static void usbd_process_ep0 (usbd_device *dev, uint8_t event, uint8_t ep) {
  * \param evt usb event
  * \param ep active endpoint
  */
-static void usbd_process_evt(usbd_device *dev, uint8_t evt, uint8_t ep) {
+static bool usbd_process_evt(usbd_device *dev, uint8_t evt, uint8_t ep) {
+    bool result = true;
     switch (evt) {
     case usbd_evt_reset:
         usbd_process_reset(dev);
@@ -352,12 +354,15 @@ static void usbd_process_evt(usbd_device *dev, uint8_t evt, uint8_t ep) {
     case usbd_evt_eprx:
     case usbd_evt_eptx:
     case usbd_evt_epsetup:
-        if (dev->endpoint[ep & 0x07]) dev->endpoint[ep & 0x07](dev, evt, ep);
+        if (dev->endpoint[ep & 0x07]) result = dev->endpoint[ep & 0x07](dev, evt, ep);
         break;
     default:
         break;
     }
-    if (dev->events[evt]) dev->events[evt](dev, evt, ep);
+    if (dev->events[evt]) {
+       result &= dev->events[evt](dev, evt, ep);
+    }
+    return result;
 }
 
  __attribute__((externally_visible)) void usbd_poll(usbd_device *dev) {

@@ -170,7 +170,7 @@ typedef struct {
   * \param ep active endpoint number
   * \note endpoints with same indexes i.e. 0x01 and 0x81 shares same callback.
   */
-typedef void (*usbd_evt_callback)(usbd_device *dev, uint8_t event, uint8_t ep);
+typedef bool (*usbd_evt_callback)(usbd_device *dev, uint8_t event, uint8_t ep);
 
 /**\brief USB control transfer completed callback function.
  * \param[in] dev pointer to USB device

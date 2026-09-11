@@ -25,7 +25,9 @@ UsbStartAdv(usbDev, configCallback, controlCallback, descriptorCallback, NULL)
 
 void UsbStop(void);
 
-//disables the USB ISR, so the main loop can alter USB data without conflicts
+/*Disables the USB ISR, so the main loop can alter USB data without conflicts.
+  This is recursive. So 2x UsbLock needs 2x UsbUnlock
+*/
 void UsbLock(void);
 
 //enables the USB ISR
@@ -35,3 +37,6 @@ void UsbUnlock(void);
 //implement if some special handling like blinking a LED is needed
 void UsbIrqOnEnter(void);
 void UsbIrqOnLeave(void);
+
+void UsbRxLvlIsrDisable(void);
+void UsbRxLvlIsrEnable(void);
