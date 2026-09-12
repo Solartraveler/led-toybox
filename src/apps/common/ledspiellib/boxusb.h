@@ -35,3 +35,6 @@ void UsbUnlock(void);
 //implement if some special handling like blinking a LED is needed
 void UsbIrqOnEnter(void);
 void UsbIrqOnLeave(void);
+
+void UsbRxLvlIsrDisable(void);
+void UsbRxLvlIsrEnable(void);

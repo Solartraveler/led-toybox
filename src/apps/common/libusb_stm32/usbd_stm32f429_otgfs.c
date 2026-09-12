@@ -372,69 +372,67 @@ static uint16_t get_frame (void) {
 static void evt_poll(usbd_device *dev, usbd_evt_callback callback) {
     uint32_t evt;
     uint32_t ep = 0;
-    while (1) {
-        uint32_t _t = OTG->GINTSTS;
-        /* bus RESET event */
-        if (_t & USB_OTG_GINTSTS_USBRST) {
-            OTG->GINTSTS = USB_OTG_GINTSTS_USBRST;
-            for (uint8_t i = 0; i < MAX_EP; i++ ) {
-                ep_deconfig(i);
-            }
-            Flush_RX();
-            continue;
-        } else if (_t & USB_OTG_GINTSTS_ENUMDNE) {
-            OTG->GINTSTS = USB_OTG_GINTSTS_ENUMDNE;
-            evt = usbd_evt_reset;
-        } else if (_t & USB_OTG_GINTSTS_IEPINT) {
-            for (;; ep++) {
-                USB_OTG_INEndpointTypeDef* epi = EPIN(ep);
-                if (ep >= MAX_EP) return;
-                if (epi->DIEPINT & USB_OTG_DIEPINT_XFRC) {
-                    epi->DIEPINT = USB_OTG_DIEPINT_XFRC;
-                    evt = usbd_evt_eptx;
-                    ep |= 0x80;
-                    break;
-                }
-            }
-        } else if (_t & USB_OTG_GINTSTS_RXFLVL) {
-            _t = OTG->GRXSTSR;
-            ep = _t & USB_OTG_GRXSTSP_EPNUM;
-            switch (_FLD2VAL(USB_OTG_GRXSTSP_PKTSTS, _t)) {
-            case 0x02:  /* OUT recieved */
-                evt = usbd_evt_eprx;
+    uint32_t _t = OTG->GINTSTS;
+    /* bus RESET event */
+    if (_t & USB_OTG_GINTSTS_USBRST) {
+        OTG->GINTSTS = USB_OTG_GINTSTS_USBRST;
+        for (uint8_t i = 0; i < MAX_EP; i++ ) {
+            ep_deconfig(i);
+        }
+        Flush_RX();
+        return;
+    } else if (_t & USB_OTG_GINTSTS_ENUMDNE) {
+        OTG->GINTSTS = USB_OTG_GINTSTS_ENUMDNE;
+        evt = usbd_evt_reset;
+    } else if (_t & USB_OTG_GINTSTS_IEPINT) {
+        for (;; ep++) {
+            USB_OTG_INEndpointTypeDef* epi = EPIN(ep);
+            if (ep >= MAX_EP) return;
+            if (epi->DIEPINT & USB_OTG_DIEPINT_XFRC) {
+                epi->DIEPINT = USB_OTG_DIEPINT_XFRC;
+                evt = usbd_evt_eptx;
+                ep |= 0x80;
                 break;
-            case 0x06:  /* SETUP recieved */
-                /* flushing TX if sonething stuck in control endpoint */
-                if (EPIN(ep)->DIEPTSIZ & USB_OTG_DIEPTSIZ_PKTCNT) {
-                    Flush_TX(ep);
-                }
-                evt = usbd_evt_epsetup;
-                break;
-            case 0x03:  /* OUT completed */
-            case 0x04:  /* SETUP completed */
-                _BST(EPOUT(ep)->DOEPCTL, USB_OTG_DOEPCTL_CNAK | USB_OTG_DOEPCTL_EPENA);
-            default:
-                /* pop GRXSTSP */
-                OTG->GRXSTSP;
-                continue;
             }
-#if !defined(USBD_SOF_DISABLED)
-        } else if (_t & USB_OTG_GINTSTS_SOF) {
-            OTG->GINTSTS = USB_OTG_GINTSTS_SOF;
-            evt = usbd_evt_sof;
-#endif
-        } else if (_t & USB_OTG_GINTSTS_USBSUSP) {
-            evt = usbd_evt_susp;
-            OTG->GINTSTS = USB_OTG_GINTSTS_USBSUSP;
-        } else if (_t & USB_OTG_GINTSTS_WKUINT) {
-            OTG->GINTSTS = USB_OTG_GINTSTS_WKUINT;
-            evt = usbd_evt_wkup;
-        } else {
-            /* no more supported events */
+        }
+    } else if (_t & USB_OTG_GINTSTS_RXFLVL & OTG->GINTMSK) {
+        _t = OTG->GRXSTSR;
+        ep = _t & USB_OTG_GRXSTSP_EPNUM;
+        switch (_FLD2VAL(USB_OTG_GRXSTSP_PKTSTS, _t)) {
+        case 0x02:  /* OUT recieved */
+            evt = usbd_evt_eprx;
+            break;
+        case 0x06:  /* SETUP recieved */
+            /* flushing TX if sonething stuck in control endpoint */
+            if (EPIN(ep)->DIEPTSIZ & USB_OTG_DIEPTSIZ_PKTCNT) {
+                Flush_TX(ep);
+            }
+            evt = usbd_evt_epsetup;
+            break;
+        case 0x03:  /* OUT completed */
+        case 0x04:  /* SETUP completed */
+            _BST(EPOUT(ep)->DOEPCTL, USB_OTG_DOEPCTL_CNAK | USB_OTG_DOEPCTL_EPENA);
+        default:
+            /* pop GRXSTSP */
+            OTG->GRXSTSP;
             return;
         }
-        callback(dev, evt, ep);
+#if !defined(USBD_SOF_DISABLED)
+    } else if (_t & USB_OTG_GINTSTS_SOF) {
+        OTG->GINTSTS = USB_OTG_GINTSTS_SOF;
+        evt = usbd_evt_sof;
+#endif
+    } else if (_t & USB_OTG_GINTSTS_USBSUSP) {
+        evt = usbd_evt_susp;
+        OTG->GINTSTS = USB_OTG_GINTSTS_USBSUSP;
+    } else if (_t & USB_OTG_GINTSTS_WKUINT) {
+        OTG->GINTSTS = USB_OTG_GINTSTS_WKUINT;
+        evt = usbd_evt_wkup;
+    } else {
+        /* no more supported events */
+        return;
     }
+    callback(dev, evt, ep);
 }
 
 static uint32_t fnv1a32_turn (uint32_t fnv, uint32_t data ) {

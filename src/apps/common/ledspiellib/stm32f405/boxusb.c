@@ -9,6 +9,7 @@ SPDX-License-Identifier: BSD-3-Clause
 
 #include "ledspiellib/boxusb.h"
 
+#include "ledspiellib/rs232debug.h"
 #include "main.h"
 #include "usbd_core.h"
 #include "usb.h"
@@ -86,11 +87,16 @@ void UsbStop(void) {
 		usbd_connect(g_pUsbDev, false);
 		usbd_enable(g_pUsbDev, false);
 		HAL_Delay(10); //let the USB process disconnection interrupts
-		NVIC_DisableIRQ(OTG_FS_IRQn); //if this test is called a second time
+		NVIC_DisableIRQ(OTG_FS_IRQn);
 		__HAL_RCC_USB_OTG_FS_CLK_DISABLE();
 		g_pUsbDev = NULL;
 	}
 }
 
+void UsbRxLvlIsrDisable(void) {
+	USB_OTG_FS->GINTMSK &= ~USB_OTG_GINTMSK_RXFLVLM;
+}
 
-
+void UsbRxLvlIsrEnable(void) {
+	USB_OTG_FS->GINTMSK |= USB_OTG_GINTMSK_RXFLVLM;
+}
