@@ -38,3 +38,5 @@ void UsbIrqOnLeave(void);
 
 void UsbRxLvlIsrDisable(void);
 void UsbRxLvlIsrEnable(void);
+
+uint32_t UsbTxBytesFree(uint8_t endpoint);

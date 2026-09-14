@@ -100,3 +100,14 @@ void UsbRxLvlIsrDisable(void) {
 void UsbRxLvlIsrEnable(void) {
 	USB_OTG_FS->GINTMSK |= USB_OTG_GINTMSK_RXFLVLM;
 }
+
+static USB_OTG_INEndpointTypeDef * UsbInEpGet(uint8_t endpoint) {
+	endpoint &= 3;
+	USB_OTG_INEndpointTypeDef * usbIn = (USB_OTG_INEndpointTypeDef *)(USB_OTG_FS_PERIPH_BASE + USB_OTG_IN_ENDPOINT_BASE + 0x20 * endpoint);
+	return usbIn;
+}
+
+uint32_t UsbTxBytesFree(uint8_t endpoint) {
+	USB_OTG_INEndpointTypeDef * usbIn = UsbInEpGet(endpoint);
+	return sizeof(uint32_t) * usbIn->DTXFSTS;
+}
