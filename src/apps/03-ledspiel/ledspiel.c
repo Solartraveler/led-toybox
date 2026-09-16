@@ -895,7 +895,7 @@ static void ProcessDebug(void) {
 		  g_ledspielState.animationNext = true;
 		  g_ledspielState.playbackFilesAuto = 0;
 		  break;
-		default: break;
+		default:
 		if (g_ledspielState.usbEnabled) {
 			StorageCycle(input);
 		}

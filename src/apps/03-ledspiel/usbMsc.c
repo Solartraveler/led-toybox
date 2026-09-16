@@ -118,9 +118,31 @@ Format (4) is: bytes from index [Cyl:Head:Off]
 Offset -1 marks whole track as bad
 
 Tested with:
-Linux kernel 5.13: Disk needs 10s to appear when using 250kHz as flash clock, no double buffering
-Linux kernel 5.13: Disk needs 4s to appear when using 4MHz as flash clock, no double buffering
-Windows 10: Disk needs 14s to appear when using 250kHz as flash clock, no double buffering
+Linux kernel 7.1.8. (takes ~12seconds until the drive appears)
+Windows 10 (takes ~60seconds until the drive appears)
+
+Performance, measured with dd if=/dev/sdd1 of=foo.bin count=128 bs=8192 iflag=direct for 1MiB test size
+Code = Memory where the program code is executed from
+Data = Memory where stacks and variables are stored
+CPU = CPU clock
+Opt = Compilation optimization level
+SPI = SPI clock speed for the external flash. If Dummy no SPI transfer is done and just zeros are delivered.
+Queue = Number of 64 byte packets which can be queued to communicate from the main loop to the USB ISR (USB_BULK_QUEUE_LEN)
+Dbl buffer = Does the USB uses the hardware double buffering feature?
+DMA = Does the SPI read uses polling (No) or DMA (Yes)?
+Test sz = Read size with dd
+Int spd = Speed while reading just from the flash (benchmark command), no USB transfer
+USB spd = Speed value returned by dd command
+Internal speed = Value returned by performance debug command
+USB ISRs = Number of USB isr while reading/writing
+USB load = Computing time of the CPU consumed by the USB ISRs while reading/writing
+
+Reading:
+Code  Data         CPU    Opt  SPI     Queue  Dbl buff  DMA  Test sz  Int spd    USB spd   USB ISRs  USB load  Note
+SRAM  SRAM/CCMRAM  48MHz  s    24MHz   24     No        Yes  1MiB     1196KiB/s  128kB/s   3000/s
+
+Writing:
+SRAM  SRAM/CCMRAM  48MHz  s    24MHz   24     No        Yes  1MiB                63kB/s    2000/s
 
 TODO:
 1. Get a final USB ID
@@ -194,7 +216,7 @@ TODO:
 #define USB_TIMEOUTS_MS 100
 
 //from host to device (out)
-#define USB_ENDPOINT_FROMHOST 0x02
+#define USB_ENDPOINT_TODEVICE 0x02
 
 //from device to host (in)
 #define USB_ENDPOINT_TOHOST 0x81
@@ -313,7 +335,7 @@ uint8_t g_DeviceConfiguration[] = {
 	//bulk-out endpoint descriptor
 	7,    //length
 	0x05, //endpoint descriptor
-	USB_ENDPOINT_FROMHOST, //endpoint address - out, number 2
+	USB_ENDPOINT_TODEVICE, //endpoint address - out, number 2
 	0x02, //bulk endpoint
 	USB_BULK_BLOCKSIZE, 0, //max 64byte per packet
 	0x00, //interval, ignored
@@ -366,6 +388,10 @@ typedef struct {
 	uint32_t writeBlock;
 	uint32_t writeBlockNum;
 	uint8_t writeBuffer[DISK_BLOCKSIZE];
+	//helper vars to properly serve libusb
+	bool epBulkToHostEnabled;
+	bool epBulkToDeviceEnabled;
+	bool usbIsrDisabled;
 	uint32_t writeStatus; //accumulate errors of one write request
 	uint64_t writtenBytes; //for S.M.A.R.T.
 	uint64_t readBytes; //for S.M.A.R.T.
@@ -492,12 +518,15 @@ bool StorageQueueCsw(usbd_device * dev, uint32_t tag, uint32_t status) {
 }
 
 //called from ISR or the main loop (within the USB lock)
-void EndpointFillDatabuffer(usbd_device *dev, uint8_t ep) {
+//returns true if data were read from the endpoint
+bool EndpointFillDatabuffer(usbd_device *dev, uint8_t ep) {
+	bool epRead = false;
 	uint32_t index = g_storageState.writeBlockIndex; //reset by main loop
 	if (g_storageState.needWriteRx) {
 		if (index < DISK_BLOCKSIZE) {
 			uint32_t toRead = MIN(USB_BULK_BLOCKSIZE, DISK_BLOCKSIZE - index);
 			int32_t res = usbd_ep_read(dev, ep, g_storageState.writeBuffer + index, toRead);
+			epRead = true;
 			if (res > 0) {
 				index += res;
 				g_storageState.writeBlockIndex = index;
@@ -507,6 +536,7 @@ void EndpointFillDatabuffer(usbd_device *dev, uint8_t ep) {
 			}
 		}
 	}
+	return epRead;
 }
 
 static void DataInsert16(uint8_t * out, uint16_t data) {
@@ -535,7 +565,10 @@ static void DataInsert64(uint8_t * out, uint32_t data) {
 void EndpointBulkOut(usbd_device *dev, uint8_t event, uint8_t ep) {
 	//printfNowait("Bulk out %u %u\r\n", event, ep);
 	if (g_storageState.needWriteRx) {
-		EndpointFillDatabuffer(dev, ep);
+		if (EndpointFillDatabuffer(dev, ep) == false) {
+			UsbRxLvlIsrDisable();
+			g_storageState.epBulkToHostEnabled = false;
+		}
 		return;
 	}
 	//normal commands, no data
@@ -1025,19 +1058,6 @@ void StorageStateReset(void) {
 	g_storageState.writeStatus = 0;
 }
 
-
-#ifdef USB_USE_DOUBLEBUFFERING
-//function copied from usb stack:
-inline static USB_OTG_INEndpointTypeDef* EPIN(uint32_t ep) {
-    return (void*)(USB_OTG_FS_PERIPH_BASE + USB_OTG_IN_ENDPOINT_BASE + (ep << 5));
-}
-#if 0
-inline static volatile uint16_t *EPR(uint8_t ep) {
-    return (uint16_t*)((ep & 0x07) * 4 + USB_BASE);
-}
-#endif
-#endif
-
 void EndpointEventTx(usbd_device *dev, uint8_t event, uint8_t ep) {
 	if ((ep == USB_ENDPOINT_TOHOST) && (event == usbd_evt_eptx)) {
 #ifdef USB_USE_DOUBLEBUFFERING
@@ -1047,11 +1067,8 @@ void EndpointEventTx(usbd_device *dev, uint8_t event, uint8_t ep) {
 		  one buffer is used.
 		  So we simply read out the number of available packets:
 		*/
-		USB_OTG_INEndpointTypeDef* epi = EPIN(ep & 0x7);
-		uint32_t bytesFree = ((epi->DTXFSTS) & 0xFFFF) * 4;
-		g_storageState.toHostFree = bytesFree / USB_BULK_BLOCKSIZE;
+		g_storageState.toHostFree = UsbTxBytesFree(USB_ENDPOINT_TOHOST) / USB_BULK_BLOCKSIZE;
 		//printfNowait("%u\r\n", g_storageState.toHostFree);
-		//printfNowait("E%xFree: 0x%x\r\n", epi, epi->DTXFSTS);
 		StorageDequeueToHost(dev); //extra call if a callback was forgotten
 #else
 		g_storageState.toHostFree++;
@@ -1060,36 +1077,49 @@ void EndpointEventTx(usbd_device *dev, uint8_t event, uint8_t ep) {
 	}
 }
 
+static void UsbStorageDisableEp(usbd_device * dev) {
+	if (g_storageState.epBulkToHostEnabled) {
+		usbd_ep_deconfig(dev, USB_ENDPOINT_TOHOST);
+	}
+	g_storageState.epBulkToHostEnabled = false;
+	if (g_storageState.epBulkToDeviceEnabled) {
+		usbd_ep_deconfig(dev, USB_ENDPOINT_TODEVICE);
+	}
+	g_storageState.epBulkToDeviceEnabled = false;
+}
+
 static usbd_respond usbSetConf(usbd_device *dev, uint8_t cfg) {
 	usbd_respond result = usbd_fail;
 	switch (cfg) {
 		case 0:
 			//deconfig
 			printfNowait("Deconfig\r\n");
-			usbd_ep_deconfig(dev, USB_ENDPOINT_TOHOST);
-			usbd_ep_deconfig(dev, USB_ENDPOINT_FROMHOST);
+			UsbStorageDisableEp(dev);
 			break;
 		case 1:
 			//set config
 			printfNowait("Set config\r\n");
+			UsbStorageDisableEp(dev);
 			StorageStateReset();
+
 			uint8_t epType = USB_EPTYPE_BULK;
 #ifdef USB_USE_DOUBLEBUFFERING
 			epType |= USB_EPTYPE_DBLBUF;
 #endif
 			if (!usbd_ep_config(dev, USB_ENDPOINT_TOHOST, epType, USB_BULK_BLOCKSIZE)) {
+				result = usbd_fail;
 				printfNowait("Error, configure ep to host\r\n");
 			} else {
-#ifdef USB_USE_DOUBLEBUFFERING2
-				g_storageState.toHostFree = 2;
-#else
-				g_storageState.toHostFree = 1;
-#endif
+				g_storageState.epBulkToHostEnabled = true;
+				g_storageState.toHostFree = UsbTxBytesFree(USB_ENDPOINT_TOHOST) / USB_BULK_BLOCKSIZE;
 			}
-			if (!usbd_ep_config(dev, USB_ENDPOINT_FROMHOST, epType, USB_BULK_BLOCKSIZE)) {
+			if (!usbd_ep_config(dev, USB_ENDPOINT_TODEVICE, epType, USB_BULK_BLOCKSIZE)) {
+				result = usbd_fail;
 				printfNowait("Error, configure ep from host\r\n");
+			} else {
+				g_storageState.epBulkToDeviceEnabled = true;
 			}
-			usbd_reg_endpoint(dev, USB_ENDPOINT_FROMHOST, &EndpointBulkOut);
+			usbd_reg_endpoint(dev, USB_ENDPOINT_TODEVICE, &EndpointBulkOut);
 			usbd_reg_event(dev, usbd_evt_eptx, EndpointEventTx);
 			result = usbd_ack;
 			break;
@@ -1105,9 +1135,10 @@ static usbd_respond usbControl(usbd_device *dev, usbd_ctlreq *req, usbd_rqc_call
 		return usbd_ack;
 	}
 	//bulk only reset
-	if ((req->bmRequestType == 0x21) && (req->bRequest == 0xFF) && (req->wValue == 0) && (req->wLength == 1)) {
+	if ((req->bmRequestType == 0x21) && (req->bRequest == 0xFF) && (req->wValue == 0) && (req->wLength == 0)) {
 		printfNowait("Bulk reset\r\n");
 		StorageStateReset();
+		g_storageState.toHostFree = UsbTxBytesFree(USB_ENDPOINT_TOHOST) / USB_BULK_BLOCKSIZE;
 		return usbd_ack;
 	}
 	//set interface
@@ -1132,10 +1163,6 @@ static usbd_respond usbControl(usbd_device *dev, usbd_ctlreq *req, usbd_rqc_call
 void StorageInit(void) {
 	StorageStateReset();
 	g_storageState.flashBytes = FlashSizeGet();
-	/*TODO: Currently writing fails on the STM32F405 due to issues in the USB driver.
-	  It works with the STM32L452 USB driver.
-	*/
-	g_storageState.writeProtected = true;
 	if (g_storageState.flashBytes >= DISK_RESERVEDOFFSET) {
 		g_storageState.flashBytes -= DISK_RESERVEDOFFSET;
 	}
@@ -1266,6 +1293,10 @@ bool ProcessFlashAccess(void) {
 		memcpy(buffer, g_storageState.writeBuffer, DISK_BLOCKSIZE);
 		uint32_t writeBlock = g_storageState.writeBlock;
 		g_storageState.writeBlockIndex = 0; //this allows reception of the next block
+		if (g_storageState.epBulkToHostEnabled == false) {
+			g_storageState.epBulkToHostEnabled = true;
+			UsbRxLvlIsrEnable();
+		}
 		g_storageState.writeBlock++;
 		bool firstBlock = g_storageState.writeFirstBlock;
 		g_storageState.writeFirstBlock = false;
@@ -1281,9 +1312,9 @@ bool ProcessFlashAccess(void) {
 			/*If there are already data in the endpoint, and the ISR could not read it
 			  because the buffer was already full, we need to re-check the endpoint
 			  now, because there will not be another interrupt unless we have read the
-			  data.
+			  data (this is depending on the used STM32 variant).
 			*/
-			EndpointFillDatabuffer(&g_usbDev, USB_ENDPOINT_FROMHOST);
+			EndpointFillDatabuffer(&g_usbDev, USB_ENDPOINT_TODEVICE);
 		}
 		UsbUnlock();
 		uint32_t address = DISK_RESERVEDOFFSET + writeBlock * DISK_BLOCKSIZE;

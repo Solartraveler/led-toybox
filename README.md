@@ -42,7 +42,7 @@ Some animations are available.
 
 Missing featues:
 
-- Data exchange over USB mass storage is slow and only working in the Device -> PC direction (read only drive).
+- Data exchange over USB mass storage is slow
 
 - The IR receiver is currently unused.
 
