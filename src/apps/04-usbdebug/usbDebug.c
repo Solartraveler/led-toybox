@@ -51,8 +51,11 @@ ledspielState_t g_ledspielState;
 void MainMenu(void) {
 	printf("\r\nSelect operation:\r\n");
 	printf("1..9: Send bulk packets\r\n");
+	printf("c: Toggle print packet content\r\n");
 	printf("h: This help screen\r\n");
 	printf("i: CPU idle stats\r\n");
+	printf("n: Toggle multi buffer to host (in endpoint)\r\n");
+	printf("o: Toggle multi buffer to device (out endpoint)\r\n");
 	printf("p: Toggle print USB performance\r\n");
 	printf("r: Reset\r\n");
 	printf("u: Toggle USB device\r\n");

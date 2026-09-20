@@ -37,12 +37,8 @@ The first byte of each packet is printed on the serial console.
 #define USB_STRING_PRODUCT 2
 #define USB_STRING_SERIAL 3
 
-/*Doublebuffering is untested with the STM32F405, there are reports it has issues
-  https://github.com/dmitrystu/libusb_stm32/issues/135
-  but enabling actually works.
-*/
-//#define USB_USE_TODEVICE_DOUBLEBUFFERING
-//#define USB_USE_TOHOST_DOUBLEBUFFERING
+//Fits to USB_EPTYPE_7BUF
+#define USB_QUEUE_TOHOST_BUFFERED_MAX 7
 
 #define USB_VENDOR "Marwedels.de"
 #define USB_PRODUCT "LedSpiel"
@@ -134,11 +130,13 @@ typedef struct {
 
 typedef struct {
 	bool usbEnabled;
+	bool mutePacketContent;
 	//bulk queue from PC
 	uint8_t toHostFree; //free in the hardware buffer
 	bulk_t toHost[USB_BULK_QUEUE_TOHOST_LEN];
 	uint32_t toHostR;
 	uint32_t toHostW;
+	size_t toHostHwQueueSize; //1...7
 	//bulk queue to PC
 	bulk_t toDevice[USB_BULK_QUEUE_TODEVICE_LEN];
 	uint32_t toDeviceR;
@@ -147,6 +145,9 @@ typedef struct {
 	bool epBulkToHostEnabled;
 	bool epBulkToDeviceEnabled;
 	bool usbIsrDisabled;
+	//states for next ep config requests
+	bool nextToHostMultiBuffer;
+	bool nextToDeviceMultiBuffer;
 } bulkState_t;
 
 typedef struct {
@@ -222,15 +223,32 @@ static usbd_respond usbGetDesc(usbd_ctlreq *req, void **address, uint16_t *lengt
 
 //Must be called from the USB interrupt, or within the UsbLock from other threads
 void UsbBulkDequeueToHost(usbd_device * dev) {
-	uint32_t thisIndex = g_bulkState.toHostR;
-	if ((g_bulkState.toHostW != thisIndex) && (g_bulkState.toHostFree > 0)) {
-		size_t len = g_bulkState.toHost[thisIndex].len;
-		if (usbd_ep_write(dev, USB_ENDPOINT_TOHOST, g_bulkState.toHost[thisIndex].data, len) == len) {
-			uint32_t nextIndex = (thisIndex + 1) % USB_BULK_QUEUE_TOHOST_LEN;
-			g_bulkState.toHostFree--;
-			g_bulkState.toHostR = nextIndex;
-		} else {
-			//printfNowait("Err, write\r\n");
+	if (g_bulkState.toHostFree >= g_bulkState.toHostHwQueueSize) {
+		uint8_t buffer[USB_QUEUE_TOHOST_BUFFERED_MAX * USB_BULK_BLOCKSIZE];
+		size_t totalLen = 0;
+		uint32_t thisIndex = g_bulkState.toHostR;
+		for (uint32_t i = 0; i < g_bulkState.toHostHwQueueSize; i++) {
+			if (g_bulkState.toHostW != thisIndex) {
+				size_t packetLen = g_bulkState.toHost[thisIndex].len;
+				memcpy(buffer + totalLen, g_bulkState.toHost[thisIndex].data, packetLen);
+				totalLen += packetLen;
+				thisIndex = (thisIndex + 1) % USB_BULK_QUEUE_TOHOST_LEN;
+				if (packetLen != USB_BULK_BLOCKSIZE) {
+					//all but the last packet needs to have block size
+					break;
+				}
+			} else {
+				break;
+			}
+		}
+		if (totalLen > 0) {
+			//printfNowait("%u\r\n", totalLen);
+			g_bulkState.toHostFree = 0;
+			if (usbd_ep_write(dev, USB_ENDPOINT_TOHOST, buffer, totalLen) == totalLen) {
+				g_bulkState.toHostR = thisIndex;
+			} else {
+				printfNowait("Err, write\r\n");
+			}
 		}
 	}
 }
@@ -325,20 +343,19 @@ void UsbBulkStateReset(void) {
 
 void EndpointEventToHost(usbd_device *dev, uint8_t event, uint8_t ep) {
 	if ((ep == USB_ENDPOINT_TOHOST) && (event == usbd_evt_eptx)) {
-#ifdef USB_USE_TOHOST_DOUBLEBUFFERING
 		/*The problem, when there is a high CPU load, not every sent USB tx packet
-		  gets a proper callback. So there is the need to fix toHostFree back to 2
-		  if this happens. Without the fix, the device continues to work as if only
-		  one buffer is used.
+		  gets a proper callback. So there is the need to fix toHostFree back to the
+		  real value if this happens.
 		  So we simply read out the number of available packets:
 		*/
 		g_bulkState.toHostFree = UsbTxBytesFree(ep) / USB_BULK_BLOCKSIZE;
 		//printfNowait("%u\r\n", g_storageState.toHostFree);
 		//printfNowait("E%xFree: 0x%x\r\n", epi, epi->DTXFSTS);
-		UsbBulkDequeueToHost(dev); //extra call if a callback was forgotten
-#else
-		g_bulkState.toHostFree++;
-#endif
+
+		/*Devices which queue one packet at a time might need a second call here
+		  if one call was forgotten. (STM32L452 for example.)
+		*/
+		//UsbBulkDequeueToHost(dev); //extra call if a callback was forgotten
 		UsbBulkDequeueToHost(dev); //normal call
 	}
 }
@@ -375,12 +392,15 @@ static usbd_respond usbSetConf(usbd_device * dev, uint8_t cfg) {
 			UsbBulkStateReset();
 			uint8_t epTypeToHost = USB_EPTYPE_BULK;
 			uint8_t epTypeToDevice = USB_EPTYPE_BULK;
-#ifdef USB_USE_TOHOST_DOUBLEBUFFERING
-			epTypeToHost |= USB_EPTYPE_DBLBUF;
-#endif
-#ifdef USB_USE_TODEVICE_DOUBLEBUFFERING
-			epTypeToDevice |= USB_EPTYPE_DBLBUF;
-#endif
+			if (g_bulkState.nextToHostMultiBuffer) {
+				epTypeToHost |= USB_EPTYPE_7BUF;
+				g_bulkState.toHostHwQueueSize = USB_QUEUE_TOHOST_BUFFERED_MAX;
+			} else {
+				g_bulkState.toHostHwQueueSize = 1;
+			}
+			if (g_bulkState.nextToDeviceMultiBuffer) {
+				epTypeToDevice |= USB_EPTYPE_DBLBUF;
+			}
 			if (!usbd_ep_config(dev, USB_ENDPOINT_TOHOST, epTypeToHost, USB_BULK_BLOCKSIZE)) {
 				result = usbd_fail;
 				printfNowait("Error, configure ep to host\r\n");
@@ -498,9 +518,11 @@ bool UsbBulkProcessLoop(void) {
 			printf("Error, could not queue block\r\n");
 			break;
 		}
-		printf("%u: %02x\r\n", (unsigned int)packets, (uint8_t)(packet.data[0]));
+		if (g_bulkState.mutePacketContent == false) {
+			printf("%u: %02x\r\n", (unsigned int)packets, (uint8_t)(packet.data[0]));
+		}
 	}
-	if (packets) {
+	if ((packets) && (g_bulkState.mutePacketContent == false)) {
 		printf("Copied %u packets, %u bytes, total %u\r\n", (unsigned int)packets, (unsigned int)bytes, (unsigned int)packetsAllTime);
 		return true;
 	}
@@ -518,10 +540,28 @@ static void UsbBulkTogglePrintPerformance(void) {
 	g_performanceState.printPerformance = !g_performanceState.printPerformance;
 }
 
+static void UsbBulkTogglePrintPacketContent(void) {
+	g_bulkState.mutePacketContent = !g_bulkState.mutePacketContent;
+	printf("Content print muted: %u\r\n", g_bulkState.mutePacketContent);
+}
+
+static void UsbBulkToggleToHostBuffer(void) {
+	g_bulkState.nextToHostMultiBuffer = !g_bulkState.nextToHostMultiBuffer;
+	printf("To host %u buffer on next connect: %u\r\n", USB_QUEUE_TOHOST_BUFFERED_MAX, g_bulkState.nextToHostMultiBuffer);
+}
+
+static void UsbBulkToggleToDeviceBuffer(void) {
+	g_bulkState.nextToDeviceMultiBuffer = !g_bulkState.nextToDeviceMultiBuffer;
+	printf("To device double buffer on next connect: %u\r\n", g_bulkState.nextToDeviceMultiBuffer);
+}
+
 bool UsbBulkCycle(char input) {
 	//call this loop as fast as possible to get the maxium performance
 	switch (input) {
 		case 'p': UsbBulkTogglePrintPerformance(); break;
+		case 'c': UsbBulkTogglePrintPacketContent(); break;
+		case 'n': UsbBulkToggleToHostBuffer(); break;
+		case 'o': UsbBulkToggleToDeviceBuffer(); break;
 		default: break;
 	}
 

@@ -237,6 +237,8 @@ static bool ep_config(uint8_t ep, uint8_t eptype, uint16_t epsize) {
         if ((eptype == USB_EPTYPE_ISOCHRONUS) ||
             (eptype == (USB_EPTYPE_BULK | USB_EPTYPE_DBLBUF))) {
             if (!set_tx_fifo(ep, epsize << 1)) return false;
+        } else if (eptype == (USB_EPTYPE_BULK | USB_EPTYPE_7BUF)) {
+            if (!set_tx_fifo(ep, epsize * 7)) return false;
         } else {
             if (!set_tx_fifo(ep, epsize)) return false;
         }
@@ -252,6 +254,7 @@ static bool ep_config(uint8_t ep, uint8_t eptype, uint16_t epsize) {
             break;
         case USB_EPTYPE_BULK:
         case USB_EPTYPE_BULK | USB_EPTYPE_DBLBUF:
+        case USB_EPTYPE_BULK | USB_EPTYPE_7BUF:
             epi->DIEPCTL = USB_OTG_DIEPCTL_SNAK | USB_OTG_DIEPCTL_USBAEP |
                             (0x02 << 18) | USB_OTG_DIEPCTL_SD0PID_SEVNFRM |
                             (ep << 22) | epsize;
@@ -273,6 +276,7 @@ static bool ep_config(uint8_t ep, uint8_t eptype, uint16_t epsize) {
                            (0x01 << 18) | epsize;
             break;
         case USB_EPTYPE_BULK | USB_EPTYPE_DBLBUF:
+        case USB_EPTYPE_BULK | USB_EPTYPE_7BUF:
         case USB_EPTYPE_BULK:
             epo->DOEPCTL = USB_OTG_DOEPCTL_SD0PID_SEVNFRM | USB_OTG_DOEPCTL_CNAK |
                            USB_OTG_DOEPCTL_EPENA | USB_OTG_DOEPCTL_USBAEP |
@@ -351,7 +355,9 @@ static int32_t ep_write(uint8_t ep, const void *buf, uint16_t blen) {
         return -1;
     }
     epi->DIEPTSIZ = 0;
-    epi->DIEPTSIZ = (1 << 19) + blen;
+    uint32_t packetSize = epi->DIEPCTL & USB_OTG_DIEPCTL_MPSIZ;
+    uint32_t packets = (blen + packetSize - 1) / packetSize;
+    epi->DIEPTSIZ = (packets << 19) + blen;
     _BMD(epi->DIEPCTL, USB_OTG_DIEPCTL_STALL, USB_OTG_DOEPCTL_EPENA | USB_OTG_DOEPCTL_CNAK);
     /* push data to FIFO */
     tmp = 0;
