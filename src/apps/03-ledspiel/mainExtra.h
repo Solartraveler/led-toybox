@@ -1,6 +1,7 @@
 #pragma once
 
-#define F_CPU 48000000
+//#define F_CPU 48000000
+#define F_CPU 168000000
 
 #define USB_BUFFERSIZE_BYTES 2060
 
