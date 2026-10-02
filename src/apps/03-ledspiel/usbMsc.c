@@ -117,18 +117,22 @@ Offset -1 marks whole track as bad.
 Format (4) is: bytes from index [Cyl:Head:Off]
 Offset -1 marks whole track as bad
 
-Tested with:
+Tested with (no Mul buff, 48MHz):
 Linux kernel 7.1.8. (takes ~12seconds until the drive appears)
 Windows 10 (takes ~60seconds until the drive appears)
 
-Performance, measured with dd if=/dev/sdd1 of=foo.bin count=128 bs=8192 iflag=direct for 1MiB test size
+Tested with (Mul buff, 48MHz):
+Linux kernel 7.1.8. (takes ~5seconds until the drive appears)
+Windows 10 (takes ~20seconds until the drive appears)
+
+Performance, measured with dd if=/dev/sdd of=foo.bin count=32 bs=65536 iflag=direct for 2MiB test size
 Code = Memory where the program code is executed from
 Data = Memory where stacks and variables are stored
 CPU = CPU clock
 Opt = Compilation optimization level
 SPI = SPI clock speed for the external flash. If Dummy no SPI transfer is done and just zeros are delivered.
 Queue = Number of 64 byte packets which can be queued to communicate from the main loop to the USB ISR (USB_BULK_QUEUE_LEN)
-Dbl buffer = Does the USB uses the hardware double buffering feature?
+Mul buffer = Does the USB uses the hardware multiple buffering feature?
 DMA = Does the SPI read uses polling (No) or DMA (Yes)?
 Test sz = Read size with dd
 Int spd = Speed while reading just from the flash (benchmark command), no USB transfer
@@ -138,11 +142,21 @@ USB ISRs = Number of USB isr while reading/writing
 USB load = Computing time of the CPU consumed by the USB ISRs while reading/writing
 
 Reading:
-Code  Data         CPU    Opt  SPI     Queue  Dbl buff  DMA  Test sz  Int spd    USB spd   USB ISRs  USB load  Note
-SRAM  SRAM/CCMRAM  48MHz  s    24MHz   24     No        Yes  1MiB     1196KiB/s  128kB/s   3000/s
+Code  Data         CPU    Opt  SPI     Queue  Mul buff  DMA  Test sz  Int spd    USB spd   USB ISRs  USB load  Note
+SRAM  SRAM/CCMRAM  48MHz  s    24MHz   16     No        Yes  2MiB     1196KiB/s  128kB/s   3006/s     9%
+SRAM  SRAM/CCMRAM  48MHz  s    24MHz   16     Yes       Yes  2MiB                444kB/s   2020/s     28%
+SRAM  SRAM/CCMRAM  168MHz s    21MHz   16     Yes       Yes  2MiB     1361KiB/s  876kB/s   3000/s     15%
+SRAM  SRAM/CCMRAM  48MHz  s    dummy   16     No        ---  2MiB                128kB/s   3006/s     9%
+SRAM  SRAM/CCMRAM  48MHz  s    dummy   16     Yes       ---  2MiB                447kB/s   2025/s     28%
+SRAM  SRAM/CCMRAM  168MHz s    dummy   16     Yes       ---  2MiB                887kB/s   3028/s     15%
 
 Writing:
-SRAM  SRAM/CCMRAM  48MHz  s    24MHz   24     No        Yes  1MiB                63kB/s    2000/s
+SRAM  SRAM/CCMRAM  48MHz  s    24MHz   16     No        Yes  2MiB                 61kB/s   1990/s     4%
+SRAM  SRAM/CCMRAM  48MHz  s    24MHz   16     Yes       Yes  2MiB                 63kB/s   1990/s     4%
+SRAM  SRAM/CCMRAM  168MHz s    21MHz   16     Yes       Yes  2MiB                 84kB/s   2320/s     1%
+SRAM  SRAM/CCMRAM  48MHz  s    dummy   16     No        ---  2MiB               1100kB/s  18800/s    70%
+SRAM  SRAM/CCMRAM  48MHz  s    dummy   16     Yes       ---  2MiB               1100kB/s  18800/s    70%
+SRAM  SRAM/CCMRAM  168MHz s    dummy   16     Yes       ---  2MiB               1100kB/s  18800/s    20%
 
 TODO:
 1. Get a final USB ID
@@ -185,15 +199,23 @@ TODO:
 #define USB_STRING_PRODUCT 2
 #define USB_STRING_SERIAL 3
 
-/*With the STM32F405, double buffering is currently not working.
-  It would work for the STM32L452.
-  Performance when reading from an SD card:
-  48MHz CPU, 24MHz SD card, no double buffering: 72.2kB/s
-  96MHz CPU, 24MHz SD card, no double buffering: 101kB/s
-  144MHz CPU, 18MHz, SD card, no double buffering: 101kB/s
-  168MHz: CPU, 21MHz SD card, no double buffering: 101kB/s
+#define USB_USE_DOUBLEBUFFERING
+
+#ifdef USB_USE_DOUBLEBUFFERING
+#define USB_QUEUE_NEED_FREE 7
+#else
+#define USB_QUEUE_NEED_FREE 1
+#endif
+
+/*If enabled, reads and writes are not forwarded to the flash,
+  instead only zeros will be read, and written data is discarded,
+  enable to measure pure USB performance without a card.
+  USB_MSC_FAKE_WRITE should only be used together with USB_MSC_FAKE_READ, otherwise
+  data on the real card might be corrupted.
 */
-//#define USB_USE_DOUBLEBUFFERING
+//#define USB_MSC_FAKE_READ
+//#define USB_MSC_FAKE_WRITE
+
 
 #define USB_VENDOR "Marwedels.de"
 #define USB_PRODUCT "LedSpiel"
@@ -210,7 +232,7 @@ TODO:
    transfer, which would be 1.2KB -> next block size is 1.5KiB, which is 24
    packets. But compared to 8 blocks, the speed gain is hardly measureable.
 */
-#define USB_BULK_QUEUE_LEN 24
+#define USB_BULK_QUEUE_LEN 16
 
 //How much time there may have passed to put a packet to the queue
 #define USB_TIMEOUTS_MS 100
@@ -475,18 +497,55 @@ static usbd_respond usbGetDesc(usbd_ctlreq *req, void **address, uint16_t *lengt
 }
 
 //Must be called from the USB interrupt, or within the UsbLock from other threads
-void StorageDequeueToHost(usbd_device * dev) {
+uint32_t StorageDequeueToHost(usbd_device * dev) {
+	uint32_t state = 0;
+#ifndef USB_USE_DOUBLEBUFFERING
 	uint32_t thisIndex = g_storageState.toHostR;
 	if ((g_storageState.toHostW != thisIndex) && (g_storageState.toHostFree > 0)) { //elements in queue
+		state = 1;
 		size_t len = g_storageState.toHost[thisIndex].len;
 		if (usbd_ep_write(dev, USB_ENDPOINT_TOHOST, g_storageState.toHost[thisIndex].data, len) == len) {
+			state = 2;
 			uint32_t nextIndex = (thisIndex + 1) % USB_BULK_QUEUE_LEN;
 			g_storageState.toHostFree--;
 			g_storageState.toHostR = nextIndex;
 		} else {
 			//printfNowait("Err, write\r\n");
 		}
+	} else if (g_storageState.toHostW != thisIndex) {
+		state = 3;
 	}
+#else
+	if (g_storageState.toHostFree >= USB_QUEUE_NEED_FREE) {
+		uint8_t buffer[USB_QUEUE_NEED_FREE * USB_BULK_BLOCKSIZE];
+		size_t totalLen = 0;
+		uint32_t thisIndex = g_storageState.toHostR;
+		for (uint32_t i = 0; i < USB_QUEUE_NEED_FREE; i++) {
+			if (g_storageState.toHostW != thisIndex) {
+				size_t packetLen = g_storageState.toHost[thisIndex].len;
+				memcpy(buffer + totalLen, g_storageState.toHost[thisIndex].data, packetLen);
+				totalLen += packetLen;
+				thisIndex = (thisIndex + 1) % USB_BULK_QUEUE_LEN;
+				if (packetLen != USB_BULK_BLOCKSIZE) {
+					//all but the last packet needs to have block size
+					break;
+				}
+			} else {
+				break;
+			}
+		}
+		if (totalLen > 0) {
+			//printfNowait("%u\r\n", totalLen);
+			g_storageState.toHostFree = 0;
+			if (usbd_ep_write(dev, USB_ENDPOINT_TOHOST, buffer, totalLen) == totalLen) {
+				g_storageState.toHostR = thisIndex;
+			} else {
+				printfNowait("Err, write\r\n");
+			}
+		}
+	}
+#endif
+	return state;
 }
 
 //Must be called from the USB interrupt, or within the UsbLock from other threads
@@ -1102,18 +1161,20 @@ static usbd_respond usbSetConf(usbd_device *dev, uint8_t cfg) {
 			UsbStorageDisableEp(dev);
 			StorageStateReset();
 
-			uint8_t epType = USB_EPTYPE_BULK;
+			uint8_t epTypeToHost = USB_EPTYPE_BULK;
+			uint8_t epTypeToDevice = USB_EPTYPE_BULK;
 #ifdef USB_USE_DOUBLEBUFFERING
-			epType |= USB_EPTYPE_DBLBUF;
+			epTypeToHost |= USB_EPTYPE_7BUF;
+			epTypeToDevice |= USB_EPTYPE_DBLBUF;
 #endif
-			if (!usbd_ep_config(dev, USB_ENDPOINT_TOHOST, epType, USB_BULK_BLOCKSIZE)) {
+			if (!usbd_ep_config(dev, USB_ENDPOINT_TOHOST, epTypeToHost, USB_BULK_BLOCKSIZE)) {
 				result = usbd_fail;
 				printfNowait("Error, configure ep to host\r\n");
 			} else {
 				g_storageState.epBulkToHostEnabled = true;
 				g_storageState.toHostFree = UsbTxBytesFree(USB_ENDPOINT_TOHOST) / USB_BULK_BLOCKSIZE;
 			}
-			if (!usbd_ep_config(dev, USB_ENDPOINT_TODEVICE, epType, USB_BULK_BLOCKSIZE)) {
+			if (!usbd_ep_config(dev, USB_ENDPOINT_TODEVICE, epTypeToDevice, USB_BULK_BLOCKSIZE)) {
 				result = usbd_fail;
 				printfNowait("Error, configure ep from host\r\n");
 			} else {
@@ -1249,13 +1310,15 @@ bool ProcessFlashAccess(void) {
 		uint64_t address = DISK_RESERVEDOFFSET + (uint64_t)block * DISK_BLOCKSIZE;
 		uint32_t status = 0; //ok
 		for (uint32_t i = 0; i < blocks; i++) {
-			/* In order to simulate a RAM disk for speed measurements, set buffer to = {0}
-			   and replace the if (Flash(...)) by if (1).
-			   Don't forget to disable writing too.
-			*/
 			uint8_t buffer[DISK_BLOCKSIZE] = {0};
+#ifndef USB_MSC_FAKE_READ
 			uint64_t address2 = address + (uint64_t)i * DISK_BLOCKSIZE;
-			if (FlashRead(address2, buffer, DISK_BLOCKSIZE)) {
+			bool readSuccess = FlashRead(address2, buffer, DISK_BLOCKSIZE);
+#else
+			(void)address;
+			bool readSuccess = true;
+#endif
+			if (readSuccess) {
 				for (uint32_t j = 0; j < DISK_BLOCKSIZE; j += USB_BULK_BLOCKSIZE) {
 					bool success = QueueBufferToHostWithTimeout(&g_usbDev, buffer + j, USB_BULK_BLOCKSIZE);
 					if (!success) {
@@ -1317,8 +1380,8 @@ bool ProcessFlashAccess(void) {
 			EndpointFillDatabuffer(&g_usbDev, USB_ENDPOINT_TODEVICE);
 		}
 		UsbUnlock();
+#ifndef USB_MSC_FAKE_WRITE
 		uint64_t address = DISK_RESERVEDOFFSET + (uint64_t)writeBlock * DISK_BLOCKSIZE;
-#if 1
 		if (firstBlock) {
 			printf("Write block %u, len %u\r\n", (unsigned int)writeBlock, (unsigned int)blocks);
 		}
