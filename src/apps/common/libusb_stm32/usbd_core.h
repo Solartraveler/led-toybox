@@ -86,6 +86,11 @@
  * @{ */
 #define USB_EPTYPE_DBLBUF   0x04    /**<\brief Doublebuffered endpoint (bulk endpoint only).*/
 
+/*See https://community.st.com/stm32-mcus-embedded-software-32/another-usb-otg-fs-quirk-the-3-bit-counter-of-in-endpoints-136937
+  why 8 buffers or more do not work.
+*/
+#define USB_EPTYPE_7BUF     0x08    /**<\brief 7 packets endpoint (bulk endpoint only).*/
+
 /**\name bmRequestType bitmapped field
  * @{ */
 #define USB_REQ_DIRECTION   (1 << 7)    /**<\brief Request direction mask.*/
