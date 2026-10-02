@@ -1246,7 +1246,7 @@ bool ProcessFlashAccess(void) {
 		uint32_t block = g_storageState.readBlock;
 		UsbUnlock();
 		printf("Read %u, len %u\r\n", (unsigned int)block, (unsigned int)blocks);
-		uint32_t address = DISK_RESERVEDOFFSET + block * DISK_BLOCKSIZE;
+		uint64_t address = DISK_RESERVEDOFFSET + (uint64_t)block * DISK_BLOCKSIZE;
 		uint32_t status = 0; //ok
 		for (uint32_t i = 0; i < blocks; i++) {
 			/* In order to simulate a RAM disk for speed measurements, set buffer to = {0}
@@ -1254,7 +1254,7 @@ bool ProcessFlashAccess(void) {
 			   Don't forget to disable writing too.
 			*/
 			uint8_t buffer[DISK_BLOCKSIZE] = {0};
-			uint32_t address2 = address + i * DISK_BLOCKSIZE;
+			uint64_t address2 = address + (uint64_t)i * DISK_BLOCKSIZE;
 			if (FlashRead(address2, buffer, DISK_BLOCKSIZE)) {
 				for (uint32_t j = 0; j < DISK_BLOCKSIZE; j += USB_BULK_BLOCKSIZE) {
 					bool success = QueueBufferToHostWithTimeout(&g_usbDev, buffer + j, USB_BULK_BLOCKSIZE);
@@ -1317,7 +1317,7 @@ bool ProcessFlashAccess(void) {
 			EndpointFillDatabuffer(&g_usbDev, USB_ENDPOINT_TODEVICE);
 		}
 		UsbUnlock();
-		uint32_t address = DISK_RESERVEDOFFSET + writeBlock * DISK_BLOCKSIZE;
+		uint64_t address = DISK_RESERVEDOFFSET + (uint64_t)writeBlock * DISK_BLOCKSIZE;
 #if 1
 		if (firstBlock) {
 			printf("Write block %u, len %u\r\n", (unsigned int)writeBlock, (unsigned int)blocks);
