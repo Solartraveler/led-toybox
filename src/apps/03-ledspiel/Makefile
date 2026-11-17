@@ -17,7 +17,7 @@
 #Name of this application
 NAME     = LedSpiel
 #Version of this application, to be used in the metadata
-VERSION  = 0.10.0
+VERSION  = 0.11.0
 #Author of this application, to be used in the metadata
 AUTHOR   = Malte Marwedel
 #Use the spdx notation here, to be used in the metadata
@@ -167,6 +167,11 @@ ANI_SOURCES += errorSdCard.xml
 ANI_SOURCES += noFiles.xml
 ANI_SOURCES += noSdCard.xml
 ANI_SOURCES += usbConnected.xml
+ANI_SOURCES += volume1.xml
+ANI_SOURCES += volume2.xml
+ANI_SOURCES += volume3.xml
+ANI_SOURCES += volume4.xml
+ANI_SOURCES += volume5.xml
 
 #######################################
 # binaries

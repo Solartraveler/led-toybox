@@ -4,8 +4,7 @@
 SPDX-License-Identifier: GPL-3.0-or-later
 
 Status:
-USB: Partially working: Currently just allows reading the SD card over as MSC on the USB
-  port. And this is very slow. Writing does not work.
+USB: Working, writing is slow
 Playing mp3: Working
 Driving LED matrix: Working
 Reading brightness: Working
@@ -57,7 +56,20 @@ Auto power off: Working
 #include "usbMsc.h"
 #include "usbConnected.h"
 #include "utility.h"
+#include "volume1.h"
+#include "volume2.h"
+#include "volume3.h"
+#include "volume4.h"
+#include "volume5.h"
 #include "json.h"
+
+/*Debugging from the RAM, the memory is full, so to fit everything into it.
+  Disable one of the features to debug the other one.
+*/
+#define ENABLE_MP3
+#define ENABLE_USB
+#define ENABLE_TESTS
+#define ENABLE_HELP
 
 /*If selected 0, the folder selection + FOLDER_OFFSET will be opened
   so the first folder has to be named 01, not 00.
@@ -75,6 +87,8 @@ typedef struct {
 	bool charging;
 	bool empty;
 	bool simEmpty;
+	bool pushDoesVolume; //If true, the push buttons increment and decrement the volume
+	bool buttonsSimple; //If true, each of the buttons only control one song
 	uint32_t chargedSeconds;
 	uint16_t chargeTryReason; //just for printfs to not flood the debug interface
 	uint16_t chargeMaxU; //in [mV]
@@ -91,8 +105,9 @@ typedef struct {
 	uint32_t inputNotChanged; //Time in [10ms]
 	uint32_t folderNum; //folder to be selected 0...15
 	uint16_t animationFileNum;
-	uint16_t playbackFileNum;
+	uint16_t playbackFileNum; //number in the folder to be played, starting with 0
 	uint16_t playbackFilesAuto; //number of files played since last user input, playback of next file is only done if value is < PLAYBACK_FILES_AUTO_MAX
+	uint16_t playbackNoRetry; //[s] Do not try to play an animation or mp3 until the value is 0
 	bool animationNext; //key or serial debug requests the next animation
 	bool playbackNext; //key or serial debug requests the next mp3
 	bool folderUpdated; //key or serial debug requests playing of an other folder
@@ -310,9 +325,13 @@ void UsbToggle(void) {
 		AppAnimationStop();
 		FilesystemUnmount();
 		g_ledspielState.filesystem = 3;
+#ifdef ENABLE_USB
 		StorageInit();
+#endif
 	} else {
+#ifdef ENABLE_USB
 		StorageStop();
+#endif
 		g_ledspielState.filesystem = FilesystemMount();
 		g_ledspielState.folderUpdated = true;
 	}
@@ -507,7 +526,7 @@ bool PlaySelectFilename(uint32_t dirnum, uint32_t filenum, const char * fileEndi
 	return found;
 }
 
-uint32_t PlayCountFiles(uint32_t dirnum, const char * fileEnding) {
+int32_t PlayCountFiles(uint32_t dirnum, const char * fileEnding) {
 	DIR d;
 	FILINFO fi;
 	char dirname[16];
@@ -526,8 +545,24 @@ uint32_t PlayCountFiles(uint32_t dirnum, const char * fileEnding) {
 		f_closedir(&d);
 	} else {
 		printf("Failed to open %s\r\n", dirname);
+		return -1;
 	}
 	return num;
+}
+
+static void VolumeAnimation(void) {
+	float volume = g_ledspielState.volume;
+	if (volume >= 1.0) {
+		AnimationStartRam(build_volume5_ani, build_volume5_ani_len, false);
+	} else if (volume >= 0.5) {
+		AnimationStartRam(build_volume4_ani, build_volume4_ani_len, false);
+	} else if (volume >= 0.25) {
+		AnimationStartRam(build_volume3_ani, build_volume3_ani_len, false);
+	} else if (volume >= 0.125) {
+		AnimationStartRam(build_volume2_ani, build_volume2_ani_len, false);
+	} else {
+		AnimationStartRam(build_volume1_ani, build_volume1_ani_len, false);
+	}
 }
 
 static void VolumeSet(void) {
@@ -546,11 +581,13 @@ void VolumeUp(void) {
 		g_ledspielState.volume = 0.0625;
 	}
 	VolumeSet();
+	VolumeAnimation();
 }
 
 void VolumeDown(void) {
 	g_ledspielState.volume /= 1.125;
 	VolumeSet();
+	VolumeAnimation();
 }
 
 void BrightnessUp(void) {
@@ -580,6 +617,9 @@ bool PlayContinue(void) {
 	if (g_ledspielState.filesystem != 0) {
 		return false;
 	}
+	if (g_ledspielState.playbackNoRetry) {
+		return false; //Otherwise we get to many warning messages
+	}
 	bool work = false;
 	if (g_ledspielState.folderUpdated) {
 		g_ledspielState.folderUpdated = false;
@@ -593,8 +633,14 @@ bool PlayContinue(void) {
 	if (g_ledspielState.playbackNext) {
 		g_ledspielState.playbackNext = false;
 		AppPlaybackStop(true);
-		g_ledspielState.playbackFileNum++;
-		uint32_t num = PlayCountFiles(g_ledspielState.folderNum + FOLDER_OFFSET, ".mp3");
+		if (g_ledspielState.buttonsSimple == false) {
+			g_ledspielState.playbackFileNum++;
+		}
+		int32_t num = PlayCountFiles(g_ledspielState.folderNum + FOLDER_OFFSET, ".mp3");
+		if (num < 0) {
+			g_ledspielState.playbackNoRetry = 5;
+			return false;
+		}
 		if (g_ledspielState.playbackFileNum >= num) {
 			g_ledspielState.playbackFileNum = 0;
 		}
@@ -603,7 +649,11 @@ bool PlayContinue(void) {
 		g_ledspielState.animationNext = false;
 		AppAnimationStop();
 		g_ledspielState.animationFileNum++;
-		uint32_t num = PlayCountFiles(g_ledspielState.folderNum + FOLDER_OFFSET, ".ani");
+		int32_t num = PlayCountFiles(g_ledspielState.folderNum + FOLDER_OFFSET, ".ani");
+		if (num < 0) {
+			g_ledspielState.playbackNoRetry = 5;
+			return false;
+		}
 		if (g_ledspielState.animationFileNum >= num) {
 			g_ledspielState.animationFileNum = 0;
 		}
@@ -615,18 +665,21 @@ bool PlayContinue(void) {
 			printf("Selected %s\r\n", filename);
 			g_ledspielState.playing = true;
 			PlaybackStart(filename, g_ledspielState.volume);
-			g_ledspielState.playbackFilesAuto++;
 			work = true;
 		}
+		//Incrementing the counter even in the case of a failure prevents endless error messages
+		g_ledspielState.playbackFilesAuto++;
 	}
 	/*PlaybackProcess is not considered "work", because it adjusts itself to the
 	  amount of data processing on the next call. And calling more than 1000/s
 	  is not needed.
 	*/
 	if (g_ledspielState.playing) {
+#ifdef ENABLE_MP3
 		if (PlaybackProcess() == false) {
 			g_ledspielState.playbackNext = true;
 		}
+#endif
 	}
 	if (g_ledspielState.animation == false) {
 		char filename[128];
@@ -832,7 +885,7 @@ static void ChargerState(void) {
 	       (unsigned int)cV, (unsigned int)g_ledspielState.chargeMaxU, (unsigned int)g_ledspielState.chargedSeconds);
 }
 
-static void SimBatEmpty(void) {
+void SimBatEmpty(void) {
 	g_ledspielState.simEmpty = !g_ledspielState.simEmpty;
 	printf("Simulate empty battery: %u\r\n", g_ledspielState.simEmpty);
 }
@@ -850,7 +903,7 @@ static void CpuIdleCalc(void) {
 	}
 }
 
-static void CpuIdlePrint(void) {
+void CpuIdlePrint(void) {
 	printf("CPU load 1s: %u%c, 10s: %u%c\r\n", g_ledspielState.cpuLoad1s, '%', g_ledspielState.cpuLoad10s, '%');
 	printf("Main loop cycles 1s: %u\r\n", (unsigned int)g_ledspielState.mainLoopCycles1s);
 }
@@ -861,17 +914,21 @@ static void ProcessDebug(void) {
 		printf("%c", input);
 	}
 	switch (input) {
+#ifdef ENABLE_TESTS
 		case 'a': AudioTest(); break;
-		case 'b': JumpDfu(); break;
-		case 'c': ChargerState(); break;
 		case 'e': SimBatEmpty(); break;
 		case 'f': MatrixFrameTest(); break;
-		case 'h': MainMenu(); break;
 		case 'i': CpuIdlePrint(); break;
+		case 't': BenchmarkSdcard(); break;
+#endif
+		case 'b': JumpDfu(); break;
+		case 'c': ChargerState(); break;
+#ifdef ENABLE_HELP
+		case 'h': MainMenu(); break;
 		case 'l': ListFiles("/", "", 2); break;
+#endif
 		case 'r': NVIC_SystemReset(); break;
 		case 's': AppPlaybackStop(false); break;
-		case 't': BenchmarkSdcard(); break;
 		case 'u': UsbToggle(); break;
 		case 'y': BrightnessUp(); break;
 		case 'x': BrightnessDown(); break;
@@ -897,7 +954,9 @@ static void ProcessDebug(void) {
 		  break;
 		default:
 		if (g_ledspielState.usbEnabled) {
+#ifdef ENABLE_USB
 			StorageCycle(input);
+#endif
 		}
 		break;
 	}
@@ -920,18 +979,53 @@ static void ProcessKeys(void) {
 	uint32_t keyInput = KeyInputGet();
 	if (keyInput != g_ledspielState.inputPrevious) {
 		printf("Key states: %x\r\n", (unsigned int)keyInput);
+		if (g_ledspielState.pushDoesVolume == false) {
+			if (keyInput & INPUT_MUSIC) {
+				g_ledspielState.playbackNext = true;
+				g_ledspielState.playbackFilesAuto = 0;
+			}
+			if (keyInput & INPUT_ANIMATION) {
+				g_ledspielState.animationNext = true;
+				g_ledspielState.playbackFilesAuto = 0;
+			}
+		} else {
+			if ((keyInput & INPUT_FOLDER) != (g_ledspielState.inputPrevious & INPUT_FOLDER)) { //volume up
+				if (g_ledspielState.volume < 1.0) {
+					g_ledspielState.volume *= 2.0;
+				}
+				VolumeSet();
+				VolumeAnimation();
+			}
+			if ((keyInput & INPUT_ANIMATION) != (g_ledspielState.inputPrevious & INPUT_ANIMATION)) { //volume down
+				if (g_ledspielState.volume >= 0.125) {
+					g_ledspielState.volume /= 2.0;
+				}
+				VolumeSet();
+				VolumeAnimation();
+			}
+		}
 		if ((keyInput & INPUT_FOLDER) != (g_ledspielState.inputPrevious & INPUT_FOLDER)) {
-			g_ledspielState.folderNum = (keyInput & INPUT_FOLDER) >> 2;
-			g_ledspielState.folderUpdated = true;
-			g_ledspielState.playbackFilesAuto = 0;
-		}
-		if (keyInput & INPUT_ANIMATION) {
-			g_ledspielState.animationNext = true;
-			g_ledspielState.playbackFilesAuto = 0;
-		}
-		if (keyInput & INPUT_MUSIC) {
-			g_ledspielState.playbackNext = true;
-			g_ledspielState.playbackFilesAuto = 0;
+			if (g_ledspielState.buttonsSimple == false) {
+				g_ledspielState.folderNum = (keyInput & INPUT_FOLDER) >> 2;
+				g_ledspielState.folderUpdated = true;
+				g_ledspielState.playbackFilesAuto = 0;
+			} else {
+				g_ledspielState.playbackNext = true;
+				uint8_t toggled = keyInput ^ g_ledspielState.inputPrevious;
+				if (toggled == 0x4) {
+					g_ledspielState.playbackFileNum = 0;
+				}
+				if (toggled == 0x8) {
+					g_ledspielState.playbackFileNum = 1;
+				}
+				if (toggled == 0x10) {
+					g_ledspielState.playbackFileNum = 2;
+				}
+				if (toggled == 0x20) {
+					g_ledspielState.playbackFileNum = 3;
+				}
+				g_ledspielState.playbackFilesAuto = 0;
+			}
 		}
 		g_ledspielState.inputPrevious = keyInput;
 		g_ledspielState.inputNotChanged = 0;
@@ -942,6 +1036,34 @@ static void ProcessKeys(void) {
 				UsbToggle();
 			} else if (keyInput & INPUT_MUSIC) {
 				AppPlaybackStop(false);
+			}
+		}
+	}
+}
+
+static void ReadConfig(void) {
+	uint8_t fileBuffer[256];
+	size_t fileSize = 0;
+	if (FilesystemReadFile("/etc/ledspiel.conf", fileBuffer, sizeof(fileBuffer), &fileSize)) {
+		char value[8];
+		if (JsonValueGet(fileBuffer, fileSize, "pushvolume", value, sizeof(value))) {
+			if (strcmp(value, "true") == 0) {
+				g_ledspielState.pushDoesVolume = true;
+				printf("Push buttons do volume\r\n");
+			}
+		}
+		if (JsonValueGet(fileBuffer, fileSize, "simple", value, sizeof(value))) {
+			if (strcmp(value, "simple") == 0) {
+				g_ledspielState.buttonsSimple = true;
+				printf("Simple song select\r\n");
+			}
+		}
+		if (JsonValueGet(fileBuffer, fileSize, "volume", value, sizeof(value))) {
+			if (value[0] >= '1' && value[0] <= '5') {
+				uint8_t v = value[0] - '1';
+				float steps[5] = {0.0625,  0.125, 0.25, 0.5 , 1.0};
+				g_ledspielState.volume = steps[v];
+				VolumeSet();
 			}
 		}
 	}
@@ -1005,7 +1127,9 @@ void AppInit(void) {
 	printf("Ready. Press h for available commands\r\n");
 	StackSampleCheck();
 	if (g_ledspielState.empty == false) {
-		if (g_ledspielState.filesystem == 1) {
+		if (g_ledspielState.filesystem == 0) {
+			ReadConfig();
+		} else if (g_ledspielState.filesystem == 1) {
 			AnimationStartRam(build_noSdCard_ani, build_noSdCard_ani_len, true);
 		} else if (g_ledspielState.filesystem > 1) {
 			AnimationStartRam(build_errorSdCard_ani, build_errorSdCard_ani_len, true);
@@ -1031,6 +1155,9 @@ static void AppCycle1s(void) {
 		FlashDisable();
 		PowerOff(); //will not return
 	}
+	if (g_ledspielState.playbackNoRetry) {
+		g_ledspielState.playbackNoRetry--;
+	}
 }
 
 //called every 10ms
@@ -1047,7 +1174,9 @@ void AppCycle(void) {
 			AnimationStartRam(build_usbConnected_ani, build_usbConnected_ani_len, true);
 			g_ledspielState.animation = true;
 		}
+#ifdef ENABLE_USB
 		work = StorageCycle(0);
+#endif
 	} else {
 		work = PlayContinue();
 	}

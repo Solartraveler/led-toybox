@@ -24,14 +24,14 @@ SPDX-License-Identifier: GPL-3.0-or-later
 /*The behaviour of libmad is mostly undocumented.
   According to https://lists.mars.org/hyperkitty/list/mad-dev@lists.mars.org/message/23ACZCLN3DMTR62GDAQNBGNUUMXORWYR/
   the maximum mp3 frame size is 2881 bytes, then libmad needs 8 additional guard bytes.
-  Then we round this up to 2 additional SD card block size -> 3584, so we can always read
+  Then we round this up to the next multiple of the SD card block size -> 3584, so we can always read
   at least one frame into the buffer without needing to read a partial block from the source.
 */
 #define IN_BUFFER_SIZE (SD_BLOCKSIZE * 7)
 
-/*Should buffer 0.2s at 16bit, 44100Hz, mono -> 17640 bytes needed.
+/*Should buffer 0.15s at 16bit, 44100Hz, mono -> 13230 bytes needed.
 */
-#define OUTPUT_BUFFER_ELEMENTS 8820
+#define OUTPUT_BUFFER_ELEMENTS 6615
 
 //Reverse engineered by looking into steam and mad.h:
 //22652 byte for 32-bit ARM, 22732 byte for 64-bit x64
