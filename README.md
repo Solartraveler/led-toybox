@@ -46,6 +46,62 @@ Missing featues:
 
 - The IR receiver is currently unused.
 
+## Usage
+
+By default the combination of the four switches select the folder to play a song and animation from.
+
+Then one push button selects the next song within the folder and the other push button the next animation.
+
+Pressing both push buttons at the same time stops the audio playback.
+
+Pressing both push buttons at the same time for three seconds starts the USB mode, another press for three seconds stops the mode again.
+
+Pressing the upper push button while powering on starts the internal bootloader for firmware updates
+
+By default the playback stops after 5 songs without any user input.
+The folders on the SD card need to be named 01 02 ... 16.
+The files in each folder can have any name, they are sorted alphabetically based on the first three letters.
+So the names should be unique within the first three letters.
+
+Charging starts automatically when USB is connected and stops after 14 hours, then its disabled for at least one hour.
+Charging is very slow, so without any control over the battery state, there is no problematic overcharging.
+
+The pin connection of the inputs is the following:
+
+![alt text](img/pin-connection.png "PCB with input description")
+
+
+### Simplified mode
+
+By creating a configuration file /etc/ledspiel.conf on the SD card, the behaviour of the buttons can be changed:
+
+```json
+{
+   "mode": "simple",
+   "pushvolume": "true",
+   "volume": "5"
+}
+```
+
+If mode is simple, the four switches select the first four animation + mp3 files in folder 01.
+The switch position does not matter, only which switch was changed last does.
+Also each file is simply repeated until another one is selected.
+
+If pushvolume is true, each of the push buttons control volume up and volume down instead of selecting another animation or mp3.
+Note: The control of the volume is digital and since the the DAC has a limited range, playing lower volumes results in less quality.
+
+volume will be the default volume after startup, the supported range is 1 ... 5.
+
+5: 100%, 10bit DAC resolution
+
+4: 50%, 9bit DAC resolution
+
+3: 25%, 8bit DAC resolution
+
+2: 12.5%, 7bit DAC resolution
+
+1: 6.25%, 6bit DAC resolution
+
 ## History
 
 Planning...
