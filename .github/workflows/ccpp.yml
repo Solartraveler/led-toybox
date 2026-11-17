@@ -12,7 +12,7 @@ jobs:
     - name: Install Dependencies
       run: |
         sudo apt update
-        sudo apt install -y gcc-arm-none-eabi make freeglut3-dev libpulse-dev libsox-fmt-mp3 jq lazarus-ide
+        sudo apt install -y gcc-arm-none-eabi make freeglut3-dev libpulse-dev libsox-fmt-mp3 jq lazarus-ide libgtk2.0-dev
 
     - name: make Utilities
       run:  make -C src/utilities
