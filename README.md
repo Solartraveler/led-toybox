@@ -52,7 +52,7 @@ By default the combination of the four switches select the folder to play a song
 
 Then one push button selects the next song within the folder and the other push button the next animation.
 
-Pressing both push buttons at the same time stops the audio playback.
+Pressing the upper push button for three seconds stops the audio playback.
 
 Pressing both push buttons at the same time for three seconds starts the USB mode, another press for three seconds stops the mode again.
 
