@@ -51,6 +51,7 @@ Auto power off: Working
 #include "main.h"
 #include "mp3Playback.h"
 #include "noFiles.h"
+#include "noFolder.h"
 #include "noSdCard.h"
 #include "sdmmcAccess.h"
 #include "usbMsc.h"
@@ -638,7 +639,8 @@ bool PlayContinue(void) {
 		}
 		int32_t num = PlayCountFiles(g_ledspielState.folderNum + FOLDER_OFFSET, ".mp3");
 		if (num < 0) {
-			g_ledspielState.playbackNoRetry = 5;
+			AnimationStartRam(build_noFolder_ani, build_noFolder_ani_len, true);
+			g_ledspielState.playbackNoRetry = 13; //duration of no folder animation
 			return false;
 		}
 		if (g_ledspielState.playbackFileNum >= num) {
@@ -651,7 +653,13 @@ bool PlayContinue(void) {
 		g_ledspielState.animationFileNum++;
 		int32_t num = PlayCountFiles(g_ledspielState.folderNum + FOLDER_OFFSET, ".ani");
 		if (num < 0) {
-			g_ledspielState.playbackNoRetry = 5;
+			AnimationStartRam(build_noFolder_ani, build_noFolder_ani_len, true);
+			g_ledspielState.playbackNoRetry = 13; //duration of no folder animation
+			return false;
+		}
+		if (num == 0) {
+			AnimationStartRam(build_noFiles_ani, build_noFiles_ani_len, true);
+			g_ledspielState.playbackNoRetry = 13; //duration of no files animation
 			return false;
 		}
 		if (g_ledspielState.animationFileNum >= num) {
