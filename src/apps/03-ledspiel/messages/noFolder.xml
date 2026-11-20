@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<storybook Xsize="5" Ysize="5" fileformat="1" colorFormat="1">
+  <text font="2" color1="0000FFFFFFFF" color2="000000000000" comment=" KEIN ORDNER" repeats="51" duration="250"/>
+  <pause comment="" duration="1000"/>
+</storybook>

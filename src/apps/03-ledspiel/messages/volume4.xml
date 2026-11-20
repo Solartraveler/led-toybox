@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<storybook Xsize="5" Ysize="5" fileformat="1" colorFormat="2">
+<storybook Xsize="5" Ysize="5" fileformat="1" colorFormat="1">
   <frame comment="" duration="500">
     <line>000000000000000000000000000000000000000000000000000000000000</line>
     <line>0000FFFFFFFF0000FFFFFFFF0000FFFFFFFF0000FFFFFFFF000000000000</line>
