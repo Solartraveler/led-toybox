@@ -7,6 +7,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "animationPlayback.h"
 
@@ -69,7 +70,17 @@ bool AnimationProcess(void) {
 	if (HAL_GetTick() < g_animationState.wait) {
 		return true;
 	}
-	size_t frameSize = g_animationState.bytesPerPixel * MATRIX_X * MATRIX_Y + ANI_FRAME_METADATA_SIZE;
+	size_t dataSize;
+	size_t frameSize;
+	bool widen;
+	if (g_animationState.bytesPerPixel) {
+		dataSize = g_animationState.bytesPerPixel * MATRIX_X * MATRIX_Y;
+		widen = false;
+	} else {
+		dataSize = (MATRIX_X * MATRIX_Y + 1) / 2;
+		widen = true;
+	}
+	frameSize = dataSize + ANI_FRAME_METADATA_SIZE;
 	const uint8_t * pFrame = AnimationDataGet(frameSize);
 	if ((!pFrame) || (pFrame[0] != ANI_TYPE_FRAME)) {
 		if (g_animationState.repeat) {
@@ -84,7 +95,21 @@ bool AnimationProcess(void) {
 	}
 	uint16_t delay = (pFrame[1] << 8) | pFrame[2];
 	g_animationState.wait += delay;
-	MatrixFrame(g_animationState.bytesPerPixel, pFrame + ANI_FRAME_METADATA_SIZE);
+	if (widen == false) {
+		MatrixFrame(g_animationState.bytesPerPixel, pFrame + ANI_FRAME_METADATA_SIZE);
+	} else {
+		//make a 1 byte per pixel format out of a 0.5 bytes per pixel format
+		memmove(g_animationState.fileBuffer, pFrame + ANI_FRAME_METADATA_SIZE, dataSize);
+		const uint8_t table[8] = {0, 0x3, 0x0C, 0x0F, 0x30, 0x33, 0x3C, 0x3F};
+		for (size_t i = dataSize; i-- > 0;) {
+			uint8_t twoPixels = g_animationState.fileBuffer[i];
+			uint8_t highPixel = (twoPixels >> 4) & 0x7;
+			uint8_t lowPixel = twoPixels & 0x7;
+			g_animationState.fileBuffer[i * 2] = table[lowPixel];
+			g_animationState.fileBuffer[i * 2 + 1] = table[highPixel];
+		}
+		MatrixFrame(1, g_animationState.fileBuffer);
+	}
 	return true;
 }
 
@@ -98,14 +123,18 @@ static bool AnimationStart(void) {
 		printf("  no metadata\r\n");
 		return false;
 	}
-	if (pFrameHeader[5] != 1) { //unsupported format version
+	if ((pFrameHeader[5] != 1) && (pFrameHeader[5] != 2)) { //unsupported format version
 		printf("  unsupported version\r\n");
 		return false;
 	}
 	uint16_t bitsPerColor = pFrameHeader[6];
-	if ((bitsPerColor < 2) || (bitsPerColor > 16)) {
+	uint16_t bitsPerColorMatrix = bitsPerColor;
+	if ((bitsPerColor < 1) || (bitsPerColor > 16)) {
 		printf("  unsupported bit number\r\n");
 		return false;
+	}
+	if (bitsPerColorMatrix == 1) {
+		bitsPerColorMatrix = 2;
 	}
 	uint16_t sx = (pFrameHeader[7] << 8) | pFrameHeader[8];
 	uint16_t sy = (pFrameHeader[9] << 8) | pFrameHeader[10];
@@ -113,11 +142,15 @@ static bool AnimationStart(void) {
 		printf("  unsupported size\r\n");
 		return false;
 	}
-	if (!MatrixInit((1 << bitsPerColor) - 1)) {
+	if (!MatrixInit((1 << bitsPerColorMatrix) - 1)) {
 		printf("  unsupported bit number\r\n");
 		return false;
 	}
-	g_animationState.bytesPerPixel = 1;
+
+	g_animationState.bytesPerPixel = 0; //actually 0.5 bytes per pixel
+	if (bitsPerColor > 1) {
+		g_animationState.bytesPerPixel = 1;
+	}
 	if (bitsPerColor > 2) {
 		g_animationState.bytesPerPixel = 2;
 	}

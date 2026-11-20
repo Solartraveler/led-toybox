@@ -530,7 +530,12 @@ begin
   image1.Picture.Graphic := img;
   img.free;
   timer1.interval := getUint16(g_animationFrame + 1, g_animation);
-  inc(g_animationFrame, 3 + g_animationSy * g_animationSx * bytesPerPixel);
+  inc(g_animationFrame, 3); //The frame header
+  if (bytesPerPixel > 0) then begin
+    inc(g_animationFrame, g_animationSy * g_animationSx * bytesPerPixel);
+  end else begin
+    inc(g_animationFrame, (g_animationSy * g_animationSx + 1) div 2);
+  end;
 end;
 
 procedure TForm1.Button2Click(Sender: TObject);

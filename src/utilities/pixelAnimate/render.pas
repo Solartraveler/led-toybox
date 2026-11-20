@@ -19,6 +19,7 @@ type
   TBuffer = record
   data: ^Byte;
   dataUsed: integer;
+  dataUsedHalf: boolean; //for combining two pixels in one byte
   dataMax: integer;
 end;
 
@@ -38,6 +39,7 @@ function DomstrToInt(str: DOMString): integer;
 function DomstrToFloat(str: DOMString): double;
 
 procedure addUint8(value: integer; var animation: TBuffer);
+procedure addUint05(value: integer; var animation: TBuffer);
 procedure setUint8(index, value: integer; var animation: TBuffer);
 function getUint8(index: integer; animation: TBuffer): integer;
 procedure addUint16(value: integer; var animation: TBuffer);
@@ -49,6 +51,7 @@ procedure addPixel(pixel: TPixel; var animation: TBuffer);
 function  getPixel(x, y, frameIdx, format, sx: integer; animation: TBuffer): TPixel;
 procedure setPixel(x, y, frameIdx, sx, sy: integer; pixel: TPixel; var animation: TBuffer);
 function  string2Pixel(color: string; format: integer): TPixel;
+procedure addFrameHeader(duration: integer; var animation: TBuffer);
 
 function addFrame(ch: TDOMNode; sx, sy, format: integer; var animation: TBuffer): integer;
 function addRoll(ch: TDOMNode; sx, sy, format: integer; lastFrameIdx: integer; var animation: TBuffer): integer;
@@ -59,10 +62,10 @@ function addFadein(ch: TDOMNode; sx, sy, format: integer; lastFrameIdx: integer;
 function addFadeout(ch: TDOMNode; sx, sy, format: integer; lastFrameIdx: integer; var animation: TBuffer): integer;
 function bytesPerPixel(format: integer): integer;
 
-const progamVersion = '0.4.0';
+const progamVersion = '0.5.0';
 
 const charsPerColor = 12;
-const version = 1;
+const version = 2;
 
 const dataStop = 0;
 const dataHeader = 1;
@@ -190,6 +193,23 @@ begin
   end;
 end;
 
+procedure addUint05(value: integer; var animation: TBuffer);
+begin
+  if (animation.dataUsedHalf = false) then begin
+    if (animation.dataMax - animation.dataUsed) >= 1 then begin
+      animation.data[animation.dataUsed] := value;
+      inc(animation.dataUsed);
+      animation.dataUsedHalf := true;
+    end;
+  end else begin
+    if ((animation.dataMax - animation.dataUsed) >= 0) and (animation.dataUsed > 0) then begin
+      animation.data[animation.dataUsed - 1] := animation.data[animation.dataUsed - 1] or (value shl 4);
+      animation.dataUsedHalf := false;
+    end;
+  end;
+end;
+
+
 procedure setUint8(index, value: integer; var animation: TBuffer);
 begin
   if (index < animation.dataUsed) then begin
@@ -245,8 +265,11 @@ begin
     result := 3;
   end else if (format > 2) then begin
     result := 2;
-  end else
+  end else if (format > 1) then begin
     result := 1;
+  end else begin
+    result := 0; //0.5 bytes per pixel
+  end;
 end;
 
 procedure addPixel(pixel: TPixel; var animation: TBuffer);
@@ -257,23 +280,30 @@ begin
     addUint16(pixel.b, animation);
     addUint16(pixel.g, animation);
     addUint16(pixel.r, animation);
-  end else if (pixelsize = 3)  then begin
+  end else if (pixelsize = 3) then begin
     addUint8(pixel.b, animation);
     addUint8(pixel.g, animation);
     addUint8(pixel.r, animation);
-  end else if (pixelsize = 2)  then begin
+  end else if (pixelsize = 2) then begin
     addUint8((pixel.b shl 3) or (pixel.g shr 2), animation);
     addUint8(((pixel.g shl 5) and $60) or pixel.r, animation);
-  end else begin
+  end else if (pixelsize = 1) then begin
     addUint8((pixel.b shl 4) or (pixel.g shl 2) or pixel.r, animation);
+  end else begin
+    addUint05((pixel.b shl 2) or (pixel.g shl 1) or pixel.r, animation);
   end;
 end;
 
 function getPixel(x, y, frameIdx, format, sx: integer; animation: TBuffer): TPixel;
-var offset, pixelsize: integer;
+var offset, pixelsize, shift: integer;
 begin
   pixelsize := bytesPerPixel(format);
-  offset := frameIdx + 3 + (y * sx + x) * pixelsize; //3 = frame header size
+  if (pixelsize >= 1) then begin
+    offset := frameIdx + 3 + (y * sx + x) * pixelsize; //3 = frame header size
+  end else begin
+    offset := frameIdx + 3 + (y * sx + x) div 2; //3 = frame header size
+    shift := (y * sx + x) mod 2;
+  end;
   result.format := format;
   if ((offset + pixelsize) <= animation.dataUsed) then begin
     if (pixelsize = 6) then begin
@@ -290,11 +320,19 @@ begin
      result.g := ((result.b and $7) shl 2) or (result.r shr 5);
      result.b := result.b shr 3;
      result.r := result.r and $1F;
-    end else begin
+    end else if (pixelsize = 1) then begin
      result.b := getUint8(offset, animation); //2 bits blue, 2 bits green, 2 bits red
      result.g := (result.b shr 2) and $3;
      result.r := result.b and $3;
      result.b := result.b shr 4;
+    end else if (pixelsize = 0) then begin
+      result.b := getUint8(offset, animation); //1 bit blue, 1 bit green, 1 bit red
+      if (shift <> 0) then begin
+          result.b := result.b shr 4;
+      end;
+      result.g := (result.b shr 1) and $1;
+      result.r := result.b and $1;
+      result.b := (result.b shr 2) and $1;
     end;
   end else begin
      //showmessage('Error getting pixel x:' + inttostr(x) + ' y:' + inttostr(y) +'. Offset ' + inttostr(offset + pixelsize) + ' out of limit ' + inttostr(animation.dataUsed));
@@ -307,11 +345,16 @@ end;
 //Only overwrites existing pixels, so they needed to be added by addPixel in the frame before
 procedure setPixel(x, y, frameIdx, sx, sy: integer; pixel: TPixel; var animation: TBuffer);
 var
-  pixelsize, offset: integer;
+  pixelsize, offset, shift, temp, color: integer;
 begin
   if (x < sx) and (y < sy) and (x >= 0) and (y >= 0) then begin
     pixelsize := bytesPerPixel(pixel.format);
-    offset := frameIdx + 3 + (y * sx + x) * pixelsize; //3 = frame header size
+    if (pixelsize >= 1) then begin
+      offset := frameIdx + 3 + (y * sx + x) * pixelsize; //3 = frame header size
+    end else begin
+      offset := frameIdx + 3 + (y * sx + x) div 2; //3 = frame header size
+      shift := (y * sx + x) mod 2;
+    end;
     if (pixelsize = 6) then begin
       setUint16(offset + 0, pixel.b, animation);
       setUint16(offset + 2, pixel.g, animation);
@@ -323,8 +366,19 @@ begin
     end else if (pixelsize = 2) then begin
       setUint8(offset + 0, (pixel.b shl 3) or (pixel.g shr 2), animation);
       setUint8(offset + 1, ((pixel.g shl 5) and $60) or pixel.r, animation);
-    end else begin
+    end else if (pixelsize = 1) then begin
       setUint8(offset, (pixel.b shl 4) or (pixel.g shl 2) or pixel.r, animation);
+    end else if (pixelsize = 0) then begin
+      temp := getUint8(offset, animation);
+      color := (pixel.b shl 2) or (pixel.g shl 1) or pixel.r;
+      if (shift <> 0) then begin
+        temp := temp and $F;
+        temp := temp or (color shl 4);
+      end else begin
+        temp := temp and $F0;
+        temp := temp or color;
+      end;
+      setUint8(offset, temp, animation);
     end;
   end;
 end;
@@ -347,6 +401,13 @@ begin
   end;
 end;
 
+procedure addFrameHeader(duration: integer; var animation: TBuffer);
+begin
+  addUint8(dataFrame, animation);
+  addUint16(duration, animation);
+  animation.dataUsedHalf := false;
+end;
+
 function addFrame(ch: TDOMNode; sx, sy, format: integer; var animation: TBuffer): integer;
 var
   x, y: integer;
@@ -356,8 +417,7 @@ var
 begin
   result := animation.dataUsed;
   ch2 := ch.FirstChild;
-  addUint8(dataFrame, animation);
-  addUint16(DomstrToInt(ch.Attributes.GetNamedItem('duration').NodeValue), animation);
+  addFrameHeader(DomstrToInt(ch.Attributes.GetNamedItem('duration').NodeValue), animation);
   pixel.format := format;
   fallback := StringOfChar('0', sx * charsPerColor); //fallback, fill missing data with zeros
   for y := 0 to sy - 1 do begin
@@ -400,8 +460,7 @@ begin
     rollxa := rollxa - rollxo; //so now the accumulator is in the range 0...< 1 again
     rollya := rollya - rollyo;
     currentFrameIdx := animation.dataUsed;
-    addUint8(dataFrame, animation);
-    addUint16(duration, animation);
+    addFrameHeader(duration, animation);
     for y := 0 to sy - 1 do begin
       ysource := y - rollyo;
       if (ysource < 0) then ysource := ysource + sy;
@@ -443,8 +502,7 @@ begin
     rollxa := rollxa - rollxo; //so now the accumulator is in the range 0...< 1 again
     rollya := rollya - rollyo;
     currentFrameIdx := animation.dataUsed;
-    addUint8(dataFrame, animation);
-    addUint16(duration, animation);
+    addFrameHeader(duration, animation);
     for y := 0 to sy - 1 do begin
       ysource := y - rollyo;
       for x := 0 to sx - 1 do begin
@@ -590,8 +648,7 @@ begin
   text := Utf8String(ch.Attributes.GetNamedItem('comment').NodeValue);
   for i := 0 to repeats - 1 do begin
     result := animation.dataUsed;
-    addUint8(dataFrame, animation);
-    addUint16(duration, animation);
+    addFrameHeader(duration, animation);
     //add background color
     for y := 0 to sy - 1 do begin
       for x := 0 to sx - 1 do begin
@@ -666,8 +723,7 @@ begin
     factor := power(t, gamma);
 
     currentFrameIdx := animation.dataUsed;
-    addUint8(dataFrame, animation);
-    addUint16(duration, animation);
+    addFrameHeader(duration, animation);
 
     for y := 0 to sy - 1 do
       for x := 0 to sx - 1 do begin
@@ -708,8 +764,7 @@ begin
     t := (i + 1) / repeats;
     factor := power(1.0 - t, gamma);
     currentFrameIdx := animation.dataUsed;
-    addUint8(dataFrame, animation);
-    addUint16(duration, animation);
+    addFrameHeader(duration, animation);
 
     for y := 0 to sy - 1 do
       for x := 0 to sx - 1 do begin
@@ -740,6 +795,7 @@ begin
   lastFrameIdx := 0;
   animation.dataUsed := 0;
   animation.dataMax := 16777216;
+  animation.dataUsedHalf := false;
   GetMem(animation.data, animation.dataMax);
   sx := DomstrToInt(rn.Attributes.GetNamedItem('Xsize').NodeValue);
   sy := DomstrToInt(rn.Attributes.GetNamedItem('Ysize').NodeValue);
